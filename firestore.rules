@@ -203,6 +203,48 @@ service cloud.firestore {
       data.updatedAt is timestamp;
     }
 
+    // Validation Blueprint: ShiftSwapRequest
+    function isValidShiftSwapRequest(data) {
+      return data.keys().hasAll([
+        'swapId', 'requesterUid', 'requesterName', 'requesterDepartment', 'requesterPosition',
+        'requesterShiftDate', 'requesterShiftTime', 'requesterUnitName',
+        'colleagueUid', 'colleagueName', 'colleagueDepartment', 'colleaguePosition',
+        'targetShiftDate', 'targetShiftTime', 'targetUnitName',
+        'reason', 'status', 'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'swapId', 'requesterUid', 'requesterName', 'requesterDepartment', 'requesterPosition',
+        'requesterShiftDate', 'requesterShiftTime', 'requesterUnitName',
+        'colleagueUid', 'colleagueName', 'colleagueDepartment', 'colleaguePosition',
+        'targetShiftDate', 'targetShiftTime', 'targetUnitName',
+        'reason', 'status', 'adminNotes', 'reviewedByUid', 'reviewedByName', 'reviewedAt',
+        'createdAt', 'updatedAt'
+      ]) &&
+      data.swapId is string && isValidId(data.swapId) &&
+      data.requesterUid is string && isValidId(data.requesterUid) &&
+      data.requesterName is string && data.requesterName.size() >= 1 && data.requesterName.size() <= 100 &&
+      data.requesterDepartment is string && data.requesterDepartment.size() >= 1 && data.requesterDepartment.size() <= 100 &&
+      data.requesterPosition is string && data.requesterPosition.size() >= 1 && data.requesterPosition.size() <= 100 &&
+      data.requesterShiftDate is string && data.requesterShiftDate.size() == 10 && data.requesterShiftDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+      data.requesterShiftTime is string && data.requesterShiftTime.size() >= 2 && data.requesterShiftTime.size() <= 60 &&
+      data.requesterUnitName is string && data.requesterUnitName.size() >= 1 && data.requesterUnitName.size() <= 100 &&
+      data.colleagueUid is string && isValidId(data.colleagueUid) &&
+      data.colleagueName is string && data.colleagueName.size() >= 1 && data.colleagueName.size() <= 100 &&
+      data.colleagueDepartment is string && data.colleagueDepartment.size() >= 1 && data.colleagueDepartment.size() <= 100 &&
+      data.colleaguePosition is string && data.colleaguePosition.size() >= 1 && data.colleaguePosition.size() <= 100 &&
+      data.targetShiftDate is string && data.targetShiftDate.size() == 10 && data.targetShiftDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+      data.targetShiftTime is string && data.targetShiftTime.size() >= 2 && data.targetShiftTime.size() <= 60 &&
+      data.targetUnitName is string && data.targetUnitName.size() >= 1 && data.targetUnitName.size() <= 100 &&
+      data.reason is string && data.reason.size() >= 1 && data.reason.size() <= 500 &&
+      data.status is string && data.status in ['pending', 'approved', 'rejected', 'cancelled'] &&
+      (!('adminNotes' in data) || (data.adminNotes is string && data.adminNotes.size() <= 500)) &&
+      (!('reviewedByUid' in data) || (data.reviewedByUid is string && isValidId(data.reviewedByUid))) &&
+      (!('reviewedByName' in data) || (data.reviewedByName is string && data.reviewedByName.size() <= 100)) &&
+      (!('reviewedAt' in data) || (data.reviewedAt is timestamp)) &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
     // Collection: /users/{userId}
     match /users/{userId} {
       allow get: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
@@ -358,6 +400,34 @@ service cloud.firestore {
            ]))
         );
       allow delete: if isSignedIn() && isValidId(payrollId) && isAdmin();
+    }
+
+    // Collection: /shift_swaps/{swapId}
+    match /shift_swaps/{swapId} {
+      allow get: if isSignedIn() && isValidId(swapId) && (resource.data.requesterUid == request.auth.uid || resource.data.colleagueUid == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.requesterUid == request.auth.uid || resource.data.colleagueUid == request.auth.uid || isAdmin() || isBootstrappedAdmin());
+      allow create: if isSignedIn() && isValidId(swapId) && isValidShiftSwapRequest(incoming()) &&
+        incoming().swapId == swapId &&
+        (incoming().requesterUid == request.auth.uid || isAdmin()) &&
+        incoming().status in ['pending', 'approved'] &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isSignedIn() && isValidId(swapId) && isValidShiftSwapRequest(incoming()) &&
+        incoming().swapId == existing().swapId &&
+        incoming().requesterUid == existing().requesterUid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          // Admin approval or rejection
+          (isAdmin() &&
+           incoming().diff(existing()).affectedKeys().hasOnly([
+             'status', 'adminNotes', 'reviewedByUid', 'reviewedByName', 'reviewedAt', 'updatedAt'
+           ])) ||
+          // Requester cancellation
+          (request.auth.uid == existing().requesterUid &&
+           incoming().status == 'cancelled' &&
+           incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']))
+        );
+      allow delete: if isSignedIn() && isValidId(swapId) && isAdmin();
     }
   }
 }

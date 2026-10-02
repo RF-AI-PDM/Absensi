@@ -153,3 +153,31 @@ export interface MonthlyRecapItem {
   estimatedBpjsTax: number;
   estimatedNetSalary: number;
 }
+
+export type ShiftSwapStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
+
+export interface ShiftSwapRequest {
+  swapId: string;
+  requesterUid: string;
+  requesterName: string;
+  requesterDepartment: string;
+  requesterPosition: string;
+  requesterShiftDate: string;
+  requesterShiftTime: string;
+  requesterUnitName: string;
+  colleagueUid: string;
+  colleagueName: string;
+  colleagueDepartment: string;
+  colleaguePosition: string;
+  targetShiftDate: string;
+  targetShiftTime: string;
+  targetUnitName: string;
+  reason: string;
+  status: ShiftSwapStatus;
+  adminNotes?: string;
+  reviewedByUid?: string;
+  reviewedByName?: string;
+  reviewedAt?: Timestamp;
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
+}

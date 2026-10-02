@@ -616,6 +616,10 @@
     "/payroll_records/{payrollId}": {
       "schema": { "$ref": "#/entities/PayrollRecord" },
       "description": "Koleksi slip penggajian bulanan terintegrasi absensi"
+    },
+    "/shift_swaps/{swapId}": {
+      "schema": { "$ref": "#/entities/ShiftSwapRequest" },
+      "description": "Koleksi permohonan pertukaran shift antar karyawan beserta alur persetujuan admin"
     }
   }
 }

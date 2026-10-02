@@ -14,6 +14,7 @@ import {
   AttendanceReminder,
   AttendanceStatus,
   OfficeConfig,
+  ShiftSwapRequest,
   UserProfile,
 } from '../types';
 import {
@@ -22,6 +23,7 @@ import {
   formatDurationHoursMinutes,
   IPS_POWER_UNITS,
 } from '../utils/geo';
+import { ShiftSwapManager } from './ShiftSwapManager';
 
 interface AttendanceTerminalViewProps {
   profile: UserProfile;
@@ -38,6 +40,18 @@ interface AttendanceTerminalViewProps {
   }) => Promise<void>;
   onCheckOut: (log: AttendanceLog, notes: string) => Promise<void>;
   onAcknowledgeReminder: (reminder: AttendanceReminder) => Promise<void>;
+  isAdmin?: boolean;
+  allUsers?: UserProfile[];
+  shiftSwaps?: ShiftSwapRequest[];
+  onRequestShiftSwap?: (
+    data: Omit<ShiftSwapRequest, 'swapId' | 'status' | 'createdAt' | 'updatedAt'>
+  ) => Promise<void>;
+  onReviewShiftSwap?: (
+    swapId: string,
+    status: 'approved' | 'rejected',
+    adminNotes: string
+  ) => Promise<void>;
+  onCancelShiftSwap?: (swapId: string) => Promise<void>;
 }
 
 export const AttendanceTerminalView: React.FC<AttendanceTerminalViewProps> = ({
@@ -48,7 +62,65 @@ export const AttendanceTerminalView: React.FC<AttendanceTerminalViewProps> = ({
   onCheckIn,
   onCheckOut,
   onAcknowledgeReminder,
+  isAdmin = false,
+  allUsers = [],
+  shiftSwaps = [],
+  onRequestShiftSwap,
+  onReviewShiftSwap,
+  onCancelShiftSwap,
 }) => {
+  // Local fallback state for Shift Swaps if parent handlers are not provided
+  const [internalShiftSwaps, setInternalShiftSwaps] = useState<ShiftSwapRequest[]>([]);
+  const effectiveShiftSwaps = shiftSwaps.length > 0 ? shiftSwaps : internalShiftSwaps;
+
+  const handleRequestSwap = async (
+    data: Omit<ShiftSwapRequest, 'swapId' | 'status' | 'createdAt' | 'updatedAt'>
+  ) => {
+    if (onRequestShiftSwap) {
+      await onRequestShiftSwap(data);
+      return;
+    }
+    const newSwap: ShiftSwapRequest = {
+      ...data,
+      swapId: `swap_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      status: 'pending',
+    };
+    setInternalShiftSwaps((prev) => [newSwap, ...prev]);
+  };
+
+  const handleReviewSwap = async (
+    swapId: string,
+    status: 'approved' | 'rejected',
+    adminNotes: string
+  ) => {
+    if (onReviewShiftSwap) {
+      await onReviewShiftSwap(swapId, status, adminNotes);
+      return;
+    }
+    setInternalShiftSwaps((prev) =>
+      prev.map((s) =>
+        s.swapId === swapId
+          ? {
+              ...s,
+              status,
+              adminNotes,
+              reviewedByName: profile.name,
+              reviewedByUid: profile.uid,
+            }
+          : s
+      )
+    );
+  };
+
+  const handleCancelSwap = async (swapId: string) => {
+    if (onCancelShiftSwap) {
+      await onCancelShiftSwap(swapId);
+      return;
+    }
+    setInternalShiftSwaps((prev) =>
+      prev.map((s) => (s.swapId === swapId ? { ...s, status: 'cancelled' } : s))
+    );
+  };
   // Default simulation starts at PLTU Jeranjang Gerung
   const [coords, setCoords] = useState<{
     lat: number;
@@ -580,6 +652,17 @@ export const AttendanceTerminalView: React.FC<AttendanceTerminalViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Shift Swap Management & Admin Approval Workflow */}
+      <ShiftSwapManager
+        currentUser={profile}
+        isAdmin={isAdmin}
+        allUsers={allUsers}
+        shiftSwaps={effectiveShiftSwaps}
+        onRequestSwap={handleRequestSwap}
+        onReviewSwap={handleReviewSwap}
+        onCancelSwap={handleCancelSwap}
+      />
     </div>
   );
 };

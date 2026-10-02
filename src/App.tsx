@@ -23,16 +23,20 @@ import {
 } from 'firebase/firestore';
 import {
   Bell,
+  Bot,
+  CheckCircle2,
   FileSpreadsheet,
   FileText,
   KeyRound,
   LogIn,
   LogOut,
   MapPin,
+  Pencil,
   Plus,
   Send,
   ShieldCheck,
   Users,
+  X,
 } from 'lucide-react';
 import {
   auth,
@@ -51,6 +55,8 @@ import {
   PayrollRecord,
   sanitizeId,
   sanitizeString,
+  ShiftSwapRequest,
+  ShiftSwapStatus,
   UserProfile,
   VALIDATION_CONSTRAINTS,
 } from './types';
@@ -73,8 +79,10 @@ import { GeospatialRadarMap } from './components/GeospatialRadarMap';
 import { AttendanceTerminalView } from './components/AttendanceTerminalView';
 import { RecapAndPayrollView } from './components/RecapAndPayrollView';
 import { TwoFactorPanel } from './components/TwoFactorPanel';
+import { EnterpriseAgentView } from './components/EnterpriseAgentView';
+import { AttendanceTrendChart } from './components/AttendanceTrendChart';
 
-type NavTab = 'monitoring' | 'terminal' | 'recap' | 'payroll' | 'security';
+type NavTab = 'monitoring' | 'terminal' | 'recap' | 'payroll' | 'security' | 'agent';
 
 const STATUS_LABELS: Record<AttendanceStatus, string> = {
   hadir_tepat_waktu: 'Tepat Waktu',
@@ -111,6 +119,7 @@ export default function App() {
   const [attendanceLogs, setAttendanceLogs] = useState<AttendanceLog[]>([]);
   const [reminders, setReminders] = useState<AttendanceReminder[]>([]);
   const [payrollRecords, setPayrollRecords] = useState<PayrollRecord[]>([]);
+  const [shiftSwaps, setShiftSwaps] = useState<ShiftSwapRequest[]>([]);
 
   // Admin Modals & Feedback
   const [showAddStaffModal, setShowAddStaffModal] = useState(false);
@@ -128,6 +137,23 @@ export default function App() {
   const [seedingDemo, setSeedingDemo] = useState(false);
   const [quickUnitId, setQuickUnitId] = useState<string>(IPS_POWER_UNITS[0].unitId);
   const [quickActionBusy, setQuickActionBusy] = useState(false);
+  const [editingLog, setEditingLog] = useState<AttendanceLog | null>(null);
+  const [editLogForm, setEditLogForm] = useState<{
+    status: AttendanceStatus;
+    checkInTime: string;
+    checkOutTime: string;
+    lateMinutes: number;
+    isWithinGeofence: boolean;
+    notes: string;
+  }>({
+    status: 'hadir_tepat_waktu',
+    checkInTime: '',
+    checkOutTime: '',
+    lateMinutes: 0,
+    isWithinGeofence: true,
+    notes: '',
+  });
+  const [savingEditLog, setSavingEditLog] = useState(false);
 
   const showToast = (msg: string) => {
     setToastBanner(msg);
@@ -304,12 +330,60 @@ export default function App() {
       (err) => handleFirestoreError(err, OperationType.GET, 'office_configs/main_hq')
     );
 
+    let unsubSwaps: () => void;
+    if (isAdmin) {
+      unsubSwaps = onSnapshot(
+        collection(db, 'shift_swaps'),
+        (snap) => {
+          const list = snap.docs.map((d) => d.data() as ShiftSwapRequest);
+          list.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
+          setShiftSwaps(list);
+        },
+        (err) => handleFirestoreError(err, OperationType.LIST, 'shift_swaps')
+      );
+    } else {
+      let sentList: ShiftSwapRequest[] = [];
+      let recvList: ShiftSwapRequest[] = [];
+      const mergeAndSet = () => {
+        const map = new Map<string, ShiftSwapRequest>();
+        sentList.forEach((s) => map.set(s.swapId, s));
+        recvList.forEach((s) => map.set(s.swapId, s));
+        const merged = Array.from(map.values());
+        merged.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
+        setShiftSwaps(merged);
+      };
+
+      const unsubSent = onSnapshot(
+        query(collection(db, 'shift_swaps'), where('requesterUid', '==', currentUser.uid)),
+        (snap) => {
+          sentList = snap.docs.map((d) => d.data() as ShiftSwapRequest);
+          mergeAndSet();
+        },
+        (err) => handleFirestoreError(err, OperationType.LIST, 'shift_swaps')
+      );
+
+      const unsubRecv = onSnapshot(
+        query(collection(db, 'shift_swaps'), where('colleagueUid', '==', currentUser.uid)),
+        (snap) => {
+          recvList = snap.docs.map((d) => d.data() as ShiftSwapRequest);
+          mergeAndSet();
+        },
+        (err) => handleFirestoreError(err, OperationType.LIST, 'shift_swaps')
+      );
+
+      unsubSwaps = () => {
+        unsubSent();
+        unsubRecv();
+      };
+    }
+
     return () => {
       unsubUsers();
       unsubLogs();
       unsubReminders();
       unsubPayroll();
       unsubOffice();
+      unsubSwaps();
     };
   }, [authReady, currentUser, session2faVerified, isAdmin]);
 
@@ -575,6 +649,46 @@ export default function App() {
     }
   };
 
+  const handleOpenEditAttendance = (log: AttendanceLog) => {
+    setEditingLog(log);
+    setEditLogForm({
+      status: log.status,
+      checkInTime: log.checkInTime || '',
+      checkOutTime: log.checkOutTime || '',
+      lateMinutes: log.lateMinutes || 0,
+      isWithinGeofence: log.isWithinGeofence ?? true,
+      notes: log.notes || '',
+    });
+  };
+
+  const handleSaveEditAttendance = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser || !isAdmin || !editingLog) return;
+    setSavingEditLog(true);
+
+    const logRef = doc(db, 'attendance_logs', editingLog.logId);
+    try {
+      await updateDoc(logRef, {
+        recordedByUid: sanitizeId(currentUser.uid),
+        status: editLogForm.status,
+        checkInTime: sanitizeString(editLogForm.checkInTime, 40, '08:00:00'),
+        checkOutTime: sanitizeString(editLogForm.checkOutTime, 40, ''),
+        lateMinutes: Math.max(0, Math.min(1440, Number(editLogForm.lateMinutes) || 0)),
+        isWithinGeofence: Boolean(editLogForm.isWithinGeofence),
+        notes: sanitizeString(editLogForm.notes, VALIDATION_CONSTRAINTS.NOTES_MAX_LEN, ''),
+        updatedAt: serverTimestamp(),
+      });
+      showToast(
+        `Data absensi ${editingLog.userName} (${editingLog.dateStr}) berhasil diperbarui secara manual.`
+      );
+      setEditingLog(null);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `attendance_logs/${editingLog.logId}`);
+    } finally {
+      setSavingEditLog(false);
+    }
+  };
+
   const handleDispatchAutomatedReminders = async () => {
     if (!currentUser || missingStaffToday.length === 0) return;
     for (const staff of missingStaffToday) {
@@ -613,6 +727,66 @@ export default function App() {
         status: 'acknowledged',
         updatedAt: serverTimestamp(),
       });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, path);
+    }
+  };
+
+  const handleRequestShiftSwap = async (
+    data: Omit<ShiftSwapRequest, 'swapId' | 'status' | 'createdAt' | 'updatedAt'>
+  ) => {
+    if (!currentUser) return;
+    const swapId = sanitizeId(`swap_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`);
+    const path = `shift_swaps/${swapId}`;
+    try {
+      await setDoc(doc(db, 'shift_swaps', swapId), {
+        ...data,
+        swapId,
+        status: 'pending',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      showToast('Permohonan tukar shift berhasil diajukan dan menunggu persetujuan Admin.');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, path);
+    }
+  };
+
+  const handleReviewShiftSwap = async (
+    swapId: string,
+    status: 'approved' | 'rejected',
+    adminNotes: string
+  ) => {
+    if (!currentUser || !isAdmin) return;
+    const path = `shift_swaps/${swapId}`;
+    try {
+      await updateDoc(doc(db, 'shift_swaps', swapId), {
+        status,
+        adminNotes: sanitizeString(adminNotes, 500),
+        reviewedByUid: sanitizeId(currentUser.uid),
+        reviewedByName: sanitizeString(userProfile?.name || 'Administrator HR', 100),
+        reviewedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      showToast(
+        status === 'approved'
+          ? 'Permohonan tukar shift berhasil DISETUJUI oleh Admin.'
+          : 'Permohonan tukar shift berhasil DITOLAK oleh Admin.'
+      );
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, path);
+    }
+  };
+
+  const handleCancelShiftSwap = async (swapId: string) => {
+    if (!currentUser) return;
+    const path = `shift_swaps/${swapId}`;
+    try {
+      await updateDoc(doc(db, 'shift_swaps', swapId), {
+        status: 'cancelled',
+        updatedAt: serverTimestamp(),
+      });
+      showToast('Permohonan tukar shift telah dibatalkan.');
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, path);
     }
@@ -864,10 +1038,105 @@ export default function App() {
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
           });
+
+          // Seed past 6 days logs to provide rich 7-day trend chart data
+          const baseDate = new Date(selectedDate);
+          for (let d = 1; d <= 6; d++) {
+            const pastDate = new Date(baseDate);
+            pastDate.setDate(baseDate.getDate() - d);
+            const yyyy = pastDate.getFullYear();
+            const mm = String(pastDate.getMonth() + 1).padStart(2, '0');
+            const dd = String(pastDate.getDate()).padStart(2, '0');
+            const pastDateStr = `${yyyy}-${mm}-${dd}`;
+            const pastLogId = sanitizeId(`log_${member.uid}_${pastDateStr}`);
+
+            // Deterministic variations based on day and member index
+            const isLatePast = (d + member.unitIndex) % 4 === 0;
+            const pastCheckIn = isLatePast ? `08:${12 + d}:22` : `07:${45 + (d % 10)}:15`;
+            const pastStatus: AttendanceStatus = isLatePast ? 'terlambat' : 'hadir_tepat_waktu';
+            const pastLateMins = isLatePast ? 12 + d : 0;
+
+            await setDoc(doc(db, 'attendance_logs', pastLogId), {
+              logId: pastLogId,
+              userId: member.uid,
+              recordedByUid: sanitizeId(currentUser.uid),
+              userName: member.name,
+              department: member.department,
+              position: member.position,
+              dateStr: pastDateStr,
+              monthStr: pastDateStr.slice(0, 7),
+              checkInTime: pastCheckIn,
+              checkOutTime: '17:05:00',
+              latitude: lat,
+              longitude: lng,
+              accuracyMeters: 9,
+              distanceMeters: dist,
+              isWithinGeofence: dist <= officeConfig.radiusMeters,
+              locationLabel: `${targetUnit.name} (${targetUnit.region})`,
+              status: pastStatus,
+              lateMinutes: pastLateMins,
+              workDurationMinutes: 480,
+              notes: `Operasional harian ${targetUnit.name}`,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            });
+          }
         }
       }
+
+      // Seed 2 realistic shift swap requests for demonstration of Admin Approval Workflow
+      const swap1Id = sanitizeId(`swap_seed_adia_reza_${selectedDate}`);
+      await setDoc(doc(db, 'shift_swaps', swap1Id), {
+        swapId: swap1Id,
+        requesterUid: 'staf_adia_pratama',
+        requesterName: 'Adia Pratama',
+        requesterDepartment: 'Pemeliharaan Turbin & Boiler',
+        requesterPosition: 'Senior Teknisi Pembangkit',
+        requesterShiftDate: selectedDate,
+        requesterShiftTime: 'Shift Pagi (07:00 – 15:00 WITA)',
+        requesterUnitName: 'PLTU Jeranjang Gerung',
+        colleagueUid: 'staf_reza_mahendra',
+        colleagueName: 'Reza Mahendra',
+        colleagueDepartment: 'Pemeliharaan Mesin Diesel',
+        colleaguePosition: 'Teknisi Mekanik Lapangan',
+        targetShiftDate: selectedDate,
+        targetShiftTime: 'Shift Siang (15:00 – 23:00 WITA)',
+        targetUnitName: 'PLTD Pringgabaya Lombok Timur',
+        reason: 'Inspeksi darurat turbin Unit 1 membutuhkan keahlian mekanik boiler di shift pagi',
+        status: 'pending',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      const swap2Id = sanitizeId(`swap_seed_nadia_bambang_${selectedDate}`);
+      await setDoc(doc(db, 'shift_swaps', swap2Id), {
+        swapId: swap2Id,
+        requesterUid: 'staf_nadia_kusuma',
+        requesterName: 'Nadia Kusuma',
+        requesterDepartment: 'Operasi & Kontrol Gardu',
+        requesterPosition: 'Engineer Kontrol Pembangkit',
+        requesterShiftDate: selectedDate,
+        requesterShiftTime: 'Shift Pagi (07:00 – 15:00 WITA)',
+        requesterUnitName: 'PLTD Ampenan Mataram',
+        colleagueUid: 'staf_bambang_wijaya',
+        colleagueName: 'Bambang Wijaya',
+        colleagueDepartment: 'Operasional Pembangkit Listrik',
+        colleaguePosition: 'Operator Turbin Senior',
+        targetShiftDate: selectedDate,
+        targetShiftTime: 'Shift Malam (23:00 – 07:00 WITA)',
+        targetUnitName: 'PLTU Taliwang Sumbawa Barat',
+        reason: 'Penyesuaian jadwal rotasi operasional gardu distribusi wilayah Barat',
+        status: 'approved',
+        adminNotes: 'Disetujui Admin: Rotasi pertukaran shift disetujui untuk pemenuhan sertifikasi gardu',
+        reviewedByUid: sanitizeId(currentUser.uid),
+        reviewedByName: sanitizeString(userProfile?.name || 'Administrator HR', 100),
+        reviewedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
       showToast(
-        'Data staf Indonesia Power Service di 4 Unit (PLTU Jeranjang, PLTD Ampenan, PLTD Pringgabaya, PLTU Taliwang) berhasil dimuat!'
+        'Data staf Indonesia Power Service & simulasi permohonan tukar shift di 4 Unit berhasil dimuat!'
       );
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'users/seed');
@@ -1178,18 +1447,19 @@ export default function App() {
         <nav className="hidden md:flex items-center gap-6 text-xs font-medium text-slate-600">
           {(
             [
-              { id: 'monitoring', label: 'Monitoring Real-Time' },
-              { id: 'terminal', label: 'Terminal Absensi' },
-              { id: 'recap', label: 'Rekap Bulanan' },
-              { id: 'payroll', label: 'Penggajian' },
-              { id: 'security', label: 'Keamanan & Geofence' },
+              { id: 'monitoring', label: 'Monitoring Real-Time', xlOnly: false },
+              { id: 'terminal', label: 'Terminal Absensi', xlOnly: false },
+              { id: 'recap', label: 'Rekap Bulanan', xlOnly: false },
+              { id: 'payroll', label: 'Penggajian', xlOnly: false },
+              { id: 'agent', label: 'Agen & Pengetahuan', xlOnly: false },
+              { id: 'security', label: 'Keamanan & Geofence', xlOnly: true },
             ] as const
           ).map((item) => (
             <button
               key={item.id}
               type="button"
               onClick={() => setActiveTab(item.id)}
-              className={`py-1 transition-colors whitespace-nowrap ${
+              className={`${item.xlOnly ? 'hidden xl:inline-flex' : 'inline-flex'} py-1 transition-colors whitespace-nowrap ${
                 activeTab === item.id
                   ? 'text-slate-950 font-semibold underline underline-offset-8 decoration-2'
                   : 'hover:text-slate-900'
@@ -1227,6 +1497,7 @@ export default function App() {
             { id: 'terminal', label: 'Absensi GPS' },
             { id: 'recap', label: 'Rekap Bulanan' },
             { id: 'payroll', label: 'Penggajian' },
+            { id: 'agent', label: 'Agen & Bot' },
             { id: 'security', label: '2FA & Geofence' },
           ] as const
         ).map((item) => (
@@ -1291,6 +1562,15 @@ export default function App() {
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5" />
                   Ekspor Excel
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('agent')}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-slate-900 rounded-lg hover:bg-slate-800 transition-colors whitespace-nowrap"
+                >
+                  <Bot className="w-3.5 h-3.5 text-emerald-400" />
+                  Agen Sistem & Bot Pengetahuan
                 </button>
 
                 {isAdmin && (
@@ -1453,11 +1733,38 @@ export default function App() {
               </div>
             )}
 
+            {/* Visualisasi Tren Kehadiran Recharts (7 Hari Terakhir: Hadir vs Terlambat) */}
+            <AttendanceTrendChart
+              logs={attendanceLogs}
+              allUsers={allUsers}
+              selectedDate={selectedDate}
+              onSelectDate={(newDate) => setSelectedDate(newDate)}
+            />
+
             {/* Geospatial Radar & Real-Time Location Map */}
             <GeospatialRadarMap
               officeConfig={officeConfig}
               logs={filteredDateLogs}
               selectedDate={selectedDate}
+              isAdmin={isAdmin}
+              onSaveDefaultRadius={async (newRadiusMeters) => {
+                if (!currentUser || !isAdmin) return;
+                const clamped = Math.max(50, Math.min(50000, Math.round(newRadiusMeters)));
+                try {
+                  await setDoc(doc(db, 'office_configs', 'main_hq'), {
+                    ...officeConfig,
+                    configId: 'main_hq',
+                    radiusMeters: clamped,
+                    updatedBy: sanitizeId(currentUser.uid),
+                    updatedAt: serverTimestamp(),
+                  });
+                  showToast(
+                    `Radius geofence default berhasil disimpan menjadi ${clamped} meter.`
+                  );
+                } catch (err) {
+                  handleFirestoreError(err, OperationType.UPDATE, 'office_configs/main_hq');
+                }
+              }}
             />
 
             {/* Real-Time Attendance Log Table */}
@@ -1518,29 +1825,33 @@ export default function App() {
                   </div>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
+                <div className="overflow-x-auto p-1.5 sm:p-2">
+                  <table className="w-full text-left border-separate border-spacing-0">
                     <thead>
                       <tr className="border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600">
-                        <th className="py-3 px-4">Karyawan & Departemen</th>
+                        <th className="py-3 px-4 first:rounded-l-lg">Karyawan & Departemen</th>
                         <th className="py-3 px-4">Waktu Hadir (Masuk / Pulang)</th>
                         <th className="py-3 px-4">Koordinat GPS & Zona</th>
                         <th className="py-3 px-4 text-right">Jarak Kantor</th>
                         <th className="py-3 px-4">Status Kehadiran</th>
                         <th className="py-3 px-4 text-right">Durasi Kerja</th>
                         <th className="py-3 px-4">Catatan Tugas</th>
+                        <th className="py-3 px-4 text-center last:rounded-r-lg">Aksi</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-200 text-xs">
+                    <tbody className="text-xs">
                       {filteredDateLogs.map((log) => (
-                        <tr key={log.logId} className="hover:bg-slate-50/80 transition-colors">
-                          <td className="py-3 px-4">
+                        <tr
+                          key={log.logId}
+                          className="border-b border-slate-100 transition-all duration-200 ease-out hover:scale-[1.02] hover:bg-white hover:shadow-md hover:relative hover:z-10 origin-center cursor-default group"
+                        >
+                          <td className="py-3 px-4 first:rounded-l-lg border-y border-transparent group-hover:border-slate-200/80">
                             <div className="font-semibold text-slate-900">{log.userName}</div>
                             <div className="text-slate-500">
                               {log.department} · {log.position}
                             </div>
                           </td>
-                          <td className="py-3 px-4 font-mono tabular-nums">
+                          <td className="py-3 px-4 font-mono tabular-nums border-y border-transparent group-hover:border-slate-200/80">
                             <div className="text-slate-900 font-medium">
                               Masuk: {log.checkInTime}
                             </div>
@@ -1548,7 +1859,7 @@ export default function App() {
                               Pulang: {log.checkOutTime || 'Aktif Bertugas'}
                             </div>
                           </td>
-                          <td className="py-3 px-4">
+                          <td className="py-3 px-4 border-y border-transparent group-hover:border-slate-200/80">
                             <div className="font-mono tabular-nums text-slate-800">
                               {formatCoordinates(log.latitude, log.longitude)} (±
                               {log.accuracyMeters}m)
@@ -1557,7 +1868,7 @@ export default function App() {
                               {log.locationLabel}
                             </div>
                           </td>
-                          <td className="py-3 px-4 text-right font-mono tabular-nums">
+                          <td className="py-3 px-4 text-right font-mono tabular-nums border-y border-transparent group-hover:border-slate-200/80">
                             <span
                               className={`font-semibold ${
                                 log.isWithinGeofence ? 'text-emerald-700' : 'text-red-700'
@@ -1569,7 +1880,7 @@ export default function App() {
                               {log.isWithinGeofence ? 'Dalam Geofence' : 'Luar Geofence'}
                             </div>
                           </td>
-                          <td className="py-3 px-4">
+                          <td className="py-3 px-4 border-y border-transparent group-hover:border-slate-200/80">
                             <span
                               className={`font-semibold ${
                                 log.status === 'terlambat'
@@ -1587,11 +1898,29 @@ export default function App() {
                               </div>
                             )}
                           </td>
-                          <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-700">
+                          <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-700 border-y border-transparent group-hover:border-slate-200/80">
                             {formatDurationHoursMinutes(log.workDurationMinutes)}
                           </td>
-                          <td className="py-3 px-4 text-slate-600 max-w-[220px] truncate">
-                            {log.notes}
+                          <td className="py-3 px-4 text-slate-600 max-w-[220px] truncate border-y border-transparent group-hover:border-slate-200/80">
+                            {log.notes || '-'}
+                          </td>
+                          <td className="py-3 px-4 text-center last:rounded-r-lg border-y border-transparent group-hover:border-slate-200/80 whitespace-nowrap">
+                            {isAdmin ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenEditAttendance(log);
+                                }}
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-100 hover:text-slate-900 hover:border-slate-400 transition-colors shadow-2xs"
+                                title="Edit status atau catatan kehadiran secara manual (Admin)"
+                              >
+                                <Pencil className="w-3 h-3 text-slate-500" />
+                                <span>Edit</span>
+                              </button>
+                            ) : (
+                              <span className="text-[11px] text-slate-400 font-mono">-</span>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -1612,6 +1941,12 @@ export default function App() {
             onCheckIn={handleCheckIn}
             onCheckOut={handleCheckOut}
             onAcknowledgeReminder={handleAcknowledgeReminder}
+            isAdmin={isAdmin}
+            allUsers={allUsers}
+            shiftSwaps={shiftSwaps}
+            onRequestShiftSwap={handleRequestShiftSwap}
+            onReviewShiftSwap={handleReviewShiftSwap}
+            onCancelShiftSwap={handleCancelShiftSwap}
           />
         )}
 
@@ -1642,6 +1977,26 @@ export default function App() {
             onUpdatePayrollStatus={handleUpdatePayrollStatus}
             onAddStaffModalOpen={() => setShowAddStaffModal(true)}
             users={allUsers}
+          />
+        )}
+
+        {activeTab === 'agent' && (
+          <EnterpriseAgentView
+            currentUserProfile={userProfile}
+            isAdmin={isAdmin}
+            officeConfig={officeConfig}
+            selectedDate={selectedDate}
+            selectedMonth={selectedMonth}
+            allUsers={allUsers}
+            logsForSelectedDate={logsForSelectedDate}
+            unloggedUsersToday={missingStaffToday}
+            monthlyRecapItems={monthlyRecapItems}
+            payrollRecords={payrollRecords}
+            onNavigateTab={setActiveTab}
+            onSendBulkReminders={handleDispatchAutomatedReminders}
+            onSyncPayrollFromRecap={handleSyncPayrollFromRecap}
+            onExportPDF={() => exportAttendanceToPDF(filteredDateLogs, selectedDate)}
+            onExportExcel={() => exportAttendanceToExcel(filteredDateLogs, selectedDate)}
           />
         )}
 
@@ -1995,6 +2350,187 @@ export default function App() {
                 >
                   <Plus className="w-3.5 h-3.5" />
                   Simpan Staf Baru
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* Modal Edit Absensi Manual (Admin) */}
+      {editingLog && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-xl max-w-lg w-full p-6 space-y-4 shadow-2xl animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <Pencil className="w-4 h-4 text-emerald-700" />
+                  <span>Koreksi & Edit Data Absensi (Admin)</span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  ID: <span className="font-mono text-[11px]">{editingLog.logId}</span> · Tanggal:{' '}
+                  <span className="font-mono font-semibold">{editingLog.dateStr}</span>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingLog(null)}
+                className="text-slate-400 hover:text-slate-700 p-1 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Read-Only Context Information Card */}
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs space-y-1">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Nama Karyawan:</span>
+                <span className="font-semibold text-slate-900">{editingLog.userName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Departemen / Jabatan:</span>
+                <span className="text-slate-700">
+                  {editingLog.department} · {editingLog.position}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Lokasi / Unit Terdata:</span>
+                <span className="text-slate-700 truncate max-w-[260px]">
+                  {editingLog.locationLabel}
+                </span>
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveEditAttendance} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block font-medium text-slate-700 mb-1">
+                  Status Kehadiran
+                </label>
+                <select
+                  value={editLogForm.status}
+                  onChange={(e) => {
+                    const nextStatus = e.target.value as AttendanceStatus;
+                    setEditLogForm({
+                      ...editLogForm,
+                      status: nextStatus,
+                      lateMinutes: nextStatus === 'hadir_tepat_waktu' ? 0 : editLogForm.lateMinutes,
+                    });
+                  }}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
+                >
+                  <option value="hadir_tepat_waktu">Hadir Tepat Waktu</option>
+                  <option value="terlambat">Terlambat</option>
+                  <option value="izin">Izin</option>
+                  <option value="sakit">Sakit</option>
+                  <option value="lembur">Lembur</option>
+                  <option value="selesai_shift">Selesai Shift</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-medium text-slate-700 mb-1">
+                    Waktu Masuk (Check-In)
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editLogForm.checkInTime}
+                    onChange={(e) =>
+                      setEditLogForm({ ...editLogForm, checkInTime: e.target.value })
+                    }
+                    placeholder="Contoh: 07:55:00"
+                    className="w-full px-3 py-2 font-mono tabular-nums border border-slate-300 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block font-medium text-slate-700 mb-1">
+                    Waktu Pulang (Check-Out)
+                  </label>
+                  <input
+                    type="text"
+                    value={editLogForm.checkOutTime}
+                    onChange={(e) =>
+                      setEditLogForm({ ...editLogForm, checkOutTime: e.target.value })
+                    }
+                    placeholder="Contoh: 17:00:00 (Boleh kosong)"
+                    className="w-full px-3 py-2 font-mono tabular-nums border border-slate-300 rounded-lg"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-medium text-slate-700 mb-1">
+                    Keterlambatan (Menit)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={1440}
+                    value={editLogForm.lateMinutes}
+                    onChange={(e) =>
+                      setEditLogForm({
+                        ...editLogForm,
+                        lateMinutes: Math.max(0, parseInt(e.target.value, 10) || 0),
+                      })
+                    }
+                    className="w-full px-3 py-2 font-mono tabular-nums border border-slate-300 rounded-lg"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-medium text-slate-700 mb-1">
+                    Validasi Zona Geofence
+                  </label>
+                  <select
+                    value={editLogForm.isWithinGeofence ? 'true' : 'false'}
+                    onChange={(e) =>
+                      setEditLogForm({
+                        ...editLogForm,
+                        isWithinGeofence: e.target.value === 'true',
+                      })
+                    }
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white font-medium text-slate-900"
+                  >
+                    <option value="true">Valid (Dalam Geofence Unit)</option>
+                    <option value="false">Luar Geofence (Dispensasi Manual)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-medium text-slate-700 mb-1">
+                  Catatan / Keterangan Koreksi Administratif
+                </label>
+                <textarea
+                  rows={3}
+                  maxLength={VALIDATION_CONSTRAINTS.NOTES_MAX_LEN}
+                  value={editLogForm.notes}
+                  onChange={(e) => setEditLogForm({ ...editLogForm, notes: e.target.value })}
+                  placeholder="Contoh: Koreksi absensi manual oleh HRD karena penugasan darurat pembangkit atau perbaikan log check-in..."
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                />
+                <div className="text-[11px] text-slate-400 text-right mt-0.5 font-mono">
+                  {editLogForm.notes.length}/{VALIDATION_CONSTRAINTS.NOTES_MAX_LEN} karakter
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setEditingLog(null)}
+                  disabled={savingEditLog}
+                  className="px-4 py-2 text-xs font-medium text-slate-600 hover:text-slate-900 rounded-lg hover:bg-slate-100 transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingEditLog}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-slate-900 rounded-lg hover:bg-slate-800 disabled:opacity-50 transition-colors"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>{savingEditLog ? 'Menyimpan...' : 'Simpan Pembaruan Absensi'}</span>
                 </button>
               </div>
             </form>

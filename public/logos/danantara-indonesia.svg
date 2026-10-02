@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 380 110" width="380" height="110">
+  <!-- Black D Shield Emblem -->
+  <path d="M 12 14 H 52 C 78 14, 96 32, 96 55 C 96 78, 78 96, 52 96 H 12 Z" fill="#000000" />
+  <!-- Red Upper Wing inside D Emblem -->
+  <path d="M 19 48 C 36 33, 64 31, 82 44 C 85 46, 86 50, 84 52 C 74 44, 52 46, 33 61 Z" fill="#D91C24" />
+  <!-- White Lower Wing inside D Emblem -->
+  <path d="M 34 62 C 52 47, 73 45, 84 53 C 86 56, 84 61, 80 61 C 74 56, 59 61, 48 77 Z" fill="#FFFFFF" />
+  <!-- Danantara Text -->
+  <text x="112" y="52" font-family="'Plus Jakarta Sans', Arial, Helvetica, sans-serif" font-size="42" font-weight="800" letter-spacing="-0.8" fill="#000000">Danantara</text>
+  <!-- Indonesia Text -->
+  <text x="112" y="92" font-family="'Plus Jakarta Sans', Arial, Helvetica, sans-serif" font-size="42" font-weight="800" letter-spacing="-0.8" fill="#000000">Indonesia</text>
+</svg>

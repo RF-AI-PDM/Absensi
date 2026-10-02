@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 110" width="360" height="110">
+  <!-- Yellow Square Background -->
+  <rect x="8" y="13" width="84" height="84" fill="#FFF100" />
+  <!-- 3 Cyan Wavy Lines -->
+  <path d="M 16 43 Q 23 36, 30 43 T 44 43 T 58 43 T 72 43 T 84 43" fill="none" stroke="#0093D0" stroke-width="5.5" stroke-linecap="round"/>
+  <path d="M 16 58 Q 23 51, 30 58 T 44 58 T 58 58 T 72 58 T 84 58" fill="none" stroke="#0093D0" stroke-width="5.5" stroke-linecap="round"/>
+  <path d="M 16 73 Q 23 66, 30 73 T 44 73 T 58 73 T 72 73 T 84 73" fill="none" stroke="#0093D0" stroke-width="5.5" stroke-linecap="round"/>
+  <!-- Red Lightning Bolt with Arrow Tip -->
+  <polygon points="48,20 33,59 50,55 43,82 38,80 43,92 53,83 48,83 61,48 44,52 58,20" fill="#E11D2E" />
+  <!-- PLN Text -->
+  <text x="108" y="57" font-family="'Plus Jakarta Sans', Arial, Helvetica, sans-serif" font-size="48" font-weight="800" letter-spacing="2" fill="#0093D0">PLN</text>
+  <!-- Indonesia Power Text -->
+  <text x="108" y="91" font-family="'Plus Jakarta Sans', Arial, Helvetica, sans-serif" font-size="33" font-weight="300" letter-spacing="0.3" fill="#0093D0">Indonesia Power</text>
+</svg>
