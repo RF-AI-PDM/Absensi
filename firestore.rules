@@ -1,0 +1,361 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Default-Deny Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Hardened Global Primitives
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function isBootstrappedAdmin() {
+      return isSignedIn() && request.auth.token.email == 'firmansyahrizki141@gmail.com';
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin() || (isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
+    }
+
+    // Validation Blueprint: UserProfile
+    function isValidUserProfile(data) {
+      return data.keys().hasAll([
+        'uid', 'createdByUid', 'name', 'email', 'department', 'position',
+        'employeeCode', 'baseSalary', 'dailyAllowance', 'latePenaltyRate',
+        'twoFactorEnabled', 'twoFactorSecret', 'shiftStart', 'shiftEnd',
+        'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'uid', 'createdByUid', 'name', 'email', 'department', 'position',
+        'employeeCode', 'baseSalary', 'dailyAllowance', 'latePenaltyRate',
+        'twoFactorEnabled', 'twoFactorSecret', 'shiftStart', 'shiftEnd',
+        'createdAt', 'updatedAt'
+      ]) &&
+      data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 && data.uid.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.createdByUid is string && data.createdByUid.size() >= 1 && data.createdByUid.size() <= 128 && data.createdByUid.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.createdByUid == request.auth.uid &&
+      data.name is string && data.name.size() >= 1 && data.name.size() <= 100 &&
+      data.email is string && data.email.size() >= 3 && data.email.size() <= 120 &&
+      data.department is string && data.department.size() >= 1 && data.department.size() <= 60 &&
+      data.position is string && data.position.size() >= 1 && data.position.size() <= 80 &&
+      data.employeeCode is string && data.employeeCode.size() >= 2 && data.employeeCode.size() <= 32 && data.employeeCode.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.baseSalary is number && data.baseSalary >= 0 && data.baseSalary <= 1000000000 &&
+      data.dailyAllowance is number && data.dailyAllowance >= 0 && data.dailyAllowance <= 50000000 &&
+      data.latePenaltyRate is number && data.latePenaltyRate >= 0 && data.latePenaltyRate <= 10000000 &&
+      data.twoFactorEnabled is bool &&
+      data.twoFactorSecret is string && data.twoFactorSecret.size() <= 64 &&
+      data.shiftStart is string && data.shiftStart.size() >= 4 && data.shiftStart.size() <= 10 &&
+      data.shiftEnd is string && data.shiftEnd.size() >= 4 && data.shiftEnd.size() <= 10 &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    // Validation Blueprint: AdminRecord
+    function isValidAdminRecord(data) {
+      return data.keys().hasAll(['uid', 'email', 'grantedBy', 'createdAt']) &&
+      data.keys().hasOnly(['uid', 'email', 'grantedBy', 'createdAt']) &&
+      data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 && data.uid.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.email is string && data.email.size() >= 3 && data.email.size() <= 120 &&
+      data.grantedBy is string && data.grantedBy.size() >= 1 && data.grantedBy.size() <= 128 && data.grantedBy.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.grantedBy == request.auth.uid &&
+      data.createdAt is timestamp;
+    }
+
+    // Validation Blueprint: OfficeConfig
+    function isValidOfficeConfig(data) {
+      return data.keys().hasAll([
+        'configId', 'officeName', 'address', 'latitude', 'longitude',
+        'radiusMeters', 'shiftStart', 'shiftEnd', 'lateGraceMinutes',
+        'autoReminderTime', 'updatedBy', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'configId', 'officeName', 'address', 'latitude', 'longitude',
+        'radiusMeters', 'shiftStart', 'shiftEnd', 'lateGraceMinutes',
+        'autoReminderTime', 'updatedBy', 'updatedAt'
+      ]) &&
+      data.configId is string && data.configId.size() >= 1 && data.configId.size() <= 64 && data.configId.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.officeName is string && data.officeName.size() >= 1 && data.officeName.size() <= 100 &&
+      data.address is string && data.address.size() >= 1 && data.address.size() <= 250 &&
+      data.latitude is number && data.latitude >= -90 && data.latitude <= 90 &&
+      data.longitude is number && data.longitude >= -180 && data.longitude <= 180 &&
+      data.radiusMeters is number && data.radiusMeters >= 10 && data.radiusMeters <= 50000 &&
+      data.shiftStart is string && data.shiftStart.size() >= 4 && data.shiftStart.size() <= 10 &&
+      data.shiftEnd is string && data.shiftEnd.size() >= 4 && data.shiftEnd.size() <= 10 &&
+      data.lateGraceMinutes is number && data.lateGraceMinutes >= 0 && data.lateGraceMinutes <= 240 &&
+      data.autoReminderTime is string && data.autoReminderTime.size() >= 4 && data.autoReminderTime.size() <= 10 &&
+      data.updatedBy is string && data.updatedBy.size() >= 1 && data.updatedBy.size() <= 128 && data.updatedBy.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.updatedBy == request.auth.uid &&
+      data.updatedAt is timestamp;
+    }
+
+    // Validation Blueprint: AttendanceLog
+    function isValidAttendanceLog(data) {
+      return data.keys().hasAll([
+        'logId', 'userId', 'recordedByUid', 'userName', 'department', 'position',
+        'dateStr', 'monthStr', 'checkInTime', 'checkOutTime', 'latitude', 'longitude',
+        'accuracyMeters', 'distanceMeters', 'isWithinGeofence', 'locationLabel',
+        'status', 'lateMinutes', 'workDurationMinutes', 'notes', 'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'logId', 'userId', 'recordedByUid', 'userName', 'department', 'position',
+        'dateStr', 'monthStr', 'checkInTime', 'checkOutTime', 'latitude', 'longitude',
+        'accuracyMeters', 'distanceMeters', 'isWithinGeofence', 'locationLabel',
+        'status', 'lateMinutes', 'workDurationMinutes', 'notes', 'createdAt', 'updatedAt'
+      ]) &&
+      data.logId is string && data.logId.size() >= 1 && data.logId.size() <= 128 && data.logId.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 && data.userId.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.recordedByUid is string && data.recordedByUid.size() >= 1 && data.recordedByUid.size() <= 128 && data.recordedByUid.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.recordedByUid == request.auth.uid &&
+      data.userName is string && data.userName.size() >= 1 && data.userName.size() <= 100 &&
+      data.department is string && data.department.size() >= 1 && data.department.size() <= 60 &&
+      data.position is string && data.position.size() >= 1 && data.position.size() <= 80 &&
+      data.dateStr is string && data.dateStr.size() == 10 && data.dateStr.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+      data.monthStr is string && data.monthStr.size() == 7 && data.monthStr.matches('^[0-9]{4}-[0-9]{2}$') &&
+      data.checkInTime is string && data.checkInTime.size() >= 4 && data.checkInTime.size() <= 40 &&
+      data.checkOutTime is string && data.checkOutTime.size() <= 40 &&
+      data.latitude is number && data.latitude >= -90 && data.latitude <= 90 &&
+      data.longitude is number && data.longitude >= -180 && data.longitude <= 180 &&
+      data.accuracyMeters is number && data.accuracyMeters >= 0 && data.accuracyMeters <= 100000 &&
+      data.distanceMeters is number && data.distanceMeters >= 0 && data.distanceMeters <= 20000000 &&
+      data.isWithinGeofence is bool &&
+      data.locationLabel is string && data.locationLabel.size() >= 1 && data.locationLabel.size() <= 180 &&
+      data.status is string && data.status.size() <= 30 && data.status in ['hadir_tepat_waktu', 'terlambat', 'izin', 'sakit', 'lembur', 'selesai_shift'] &&
+      data.lateMinutes is number && data.lateMinutes >= 0 && data.lateMinutes <= 1440 &&
+      data.workDurationMinutes is number && data.workDurationMinutes >= 0 && data.workDurationMinutes <= 1440 &&
+      data.notes is string && data.notes.size() <= 300 &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    // Validation Blueprint: AttendanceReminder
+    function isValidAttendanceReminder(data) {
+      return data.keys().hasAll([
+        'reminderId', 'targetUserId', 'targetUserName', 'senderUid',
+        'dateStr', 'message', 'reminderType', 'status', 'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'reminderId', 'targetUserId', 'targetUserName', 'senderUid',
+        'dateStr', 'message', 'reminderType', 'status', 'createdAt', 'updatedAt'
+      ]) &&
+      data.reminderId is string && data.reminderId.size() >= 1 && data.reminderId.size() <= 128 && data.reminderId.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.targetUserId is string && data.targetUserId.size() >= 1 && data.targetUserId.size() <= 128 && data.targetUserId.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.targetUserName is string && data.targetUserName.size() >= 1 && data.targetUserName.size() <= 100 &&
+      data.senderUid is string && data.senderUid.size() >= 1 && data.senderUid.size() <= 128 && data.senderUid.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.senderUid == request.auth.uid &&
+      data.dateStr is string && data.dateStr.size() == 10 && data.dateStr.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+      data.message is string && data.message.size() >= 1 && data.message.size() <= 300 &&
+      data.reminderType is string && data.reminderType.size() <= 30 && data.reminderType in ['auto_morning', 'admin_nudge', 'checkout_reminder'] &&
+      data.status is string && data.status.size() <= 20 && data.status in ['unread', 'acknowledged'] &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    // Validation Blueprint: PayrollRecord
+    function isValidPayrollRecord(data) {
+      return data.keys().hasAll([
+        'payrollId', 'userId', 'generatedByUid', 'employeeName', 'employeeCode',
+        'department', 'position', 'monthStr', 'presentDays', 'lateDays', 'leaveDays',
+        'overtimeHours', 'baseSalary', 'totalAllowance', 'overtimePay', 'lateDeduction',
+        'bpjsTaxDeduction', 'netSalary', 'status', 'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'payrollId', 'userId', 'generatedByUid', 'employeeName', 'employeeCode',
+        'department', 'position', 'monthStr', 'presentDays', 'lateDays', 'leaveDays',
+        'overtimeHours', 'baseSalary', 'totalAllowance', 'overtimePay', 'lateDeduction',
+        'bpjsTaxDeduction', 'netSalary', 'status', 'createdAt', 'updatedAt'
+      ]) &&
+      data.payrollId is string && data.payrollId.size() >= 1 && data.payrollId.size() <= 128 && data.payrollId.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 && data.userId.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.generatedByUid is string && data.generatedByUid.size() >= 1 && data.generatedByUid.size() <= 128 && data.generatedByUid.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.generatedByUid == request.auth.uid &&
+      data.employeeName is string && data.employeeName.size() >= 1 && data.employeeName.size() <= 100 &&
+      data.employeeCode is string && data.employeeCode.size() >= 2 && data.employeeCode.size() <= 32 && data.employeeCode.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.department is string && data.department.size() >= 1 && data.department.size() <= 60 &&
+      data.position is string && data.position.size() >= 1 && data.position.size() <= 80 &&
+      data.monthStr is string && data.monthStr.size() == 7 && data.monthStr.matches('^[0-9]{4}-[0-9]{2}$') &&
+      data.presentDays is number && data.presentDays >= 0 && data.presentDays <= 31 &&
+      data.lateDays is number && data.lateDays >= 0 && data.lateDays <= 31 &&
+      data.leaveDays is number && data.leaveDays >= 0 && data.leaveDays <= 31 &&
+      data.overtimeHours is number && data.overtimeHours >= 0 && data.overtimeHours <= 300 &&
+      data.baseSalary is number && data.baseSalary >= 0 && data.baseSalary <= 1000000000 &&
+      data.totalAllowance is number && data.totalAllowance >= 0 && data.totalAllowance <= 500000000 &&
+      data.overtimePay is number && data.overtimePay >= 0 && data.overtimePay <= 500000000 &&
+      data.lateDeduction is number && data.lateDeduction >= 0 && data.lateDeduction <= 500000000 &&
+      data.bpjsTaxDeduction is number && data.bpjsTaxDeduction >= 0 && data.bpjsTaxDeduction <= 500000000 &&
+      data.netSalary is number && data.netSalary >= 0 && data.netSalary <= 2000000000 &&
+      data.status is string && data.status.size() <= 20 && data.status in ['draft', 'approved', 'paid'] &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    // Collection: /users/{userId}
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
+      allow list: if isSignedIn() && (resource.data.uid == request.auth.uid || resource.data.createdByUid == request.auth.uid || isBootstrappedAdmin());
+      allow create: if isSignedIn() && isValidId(userId) && isValidUserProfile(incoming()) &&
+        incoming().uid == userId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        (incoming().uid == request.auth.uid || isAdmin());
+      allow update: if isSignedIn() && isValidId(userId) && isValidUserProfile(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          // Action 1: Owner self-service profile or 2FA configuration update (cannot alter salary/penalty)
+          (request.auth.uid == userId &&
+           incoming().baseSalary == existing().baseSalary &&
+           incoming().dailyAllowance == existing().dailyAllowance &&
+           incoming().latePenaltyRate == existing().latePenaltyRate &&
+           incoming().diff(existing()).affectedKeys().hasOnly([
+             'name', 'department', 'position', 'twoFactorEnabled', 'twoFactorSecret', 'shiftStart', 'shiftEnd', 'updatedAt'
+           ])) ||
+          // Action 2: Admin full compensation and profile management
+          (isAdmin() &&
+           incoming().diff(existing()).affectedKeys().hasOnly([
+             'createdByUid', 'name', 'email', 'department', 'position', 'employeeCode',
+             'baseSalary', 'dailyAllowance', 'latePenaltyRate', 'twoFactorEnabled',
+             'twoFactorSecret', 'shiftStart', 'shiftEnd', 'updatedAt'
+           ]))
+        );
+      allow delete: if isSignedIn() && isValidId(userId) && isAdmin();
+    }
+
+    // Collection: /admins/{adminId}
+    match /admins/{adminId} {
+      allow get: if isSignedIn() && isValidId(adminId) && (request.auth.uid == adminId || isAdmin());
+      allow list: if false;
+      allow create: if isSignedIn() && isValidId(adminId) && isValidAdminRecord(incoming()) &&
+        incoming().uid == adminId &&
+        incoming().createdAt == request.time &&
+        isAdmin() &&
+        exists(/databases/$(database)/documents/users/$(incoming().uid));
+      allow update: if false;
+      allow delete: if isSignedIn() && isValidId(adminId) && isBootstrappedAdmin();
+    }
+
+    // Collection: /office_configs/{configId}
+    match /office_configs/{configId} {
+      allow get: if isSignedIn() && isValidId(configId);
+      allow list: if false;
+      allow create: if isSignedIn() && isValidId(configId) && isValidOfficeConfig(incoming()) &&
+        incoming().configId == configId &&
+        incoming().updatedAt == request.time &&
+        isAdmin();
+      allow update: if isSignedIn() && isValidId(configId) && isValidOfficeConfig(incoming()) &&
+        incoming().configId == existing().configId &&
+        incoming().updatedAt == request.time &&
+        isAdmin() &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'officeName', 'address', 'latitude', 'longitude', 'radiusMeters',
+          'shiftStart', 'shiftEnd', 'lateGraceMinutes', 'autoReminderTime',
+          'updatedBy', 'updatedAt'
+        ]);
+      allow delete: if false;
+    }
+
+    // Collection: /attendance_logs/{logId}
+    match /attendance_logs/{logId} {
+      allow get: if isSignedIn() && isValidId(logId) && (resource.data.userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || resource.data.recordedByUid == request.auth.uid || isBootstrappedAdmin());
+      allow create: if isSignedIn() && isValidId(logId) && isValidAttendanceLog(incoming()) &&
+        incoming().logId == logId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        (incoming().userId == request.auth.uid || isAdmin()) &&
+        exists(/databases/$(database)/documents/users/$(incoming().userId));
+      allow update: if isSignedIn() && isValidId(logId) && isValidAttendanceLog(incoming()) &&
+        incoming().logId == existing().logId &&
+        incoming().userId == existing().userId &&
+        incoming().dateStr == existing().dateStr &&
+        incoming().monthStr == existing().monthStr &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (existing().status != 'selesai_shift' || isAdmin()) && (
+          // Action 1: Employee Check-Out or Notes Update
+          (request.auth.uid == existing().userId &&
+           incoming().diff(existing()).affectedKeys().hasOnly([
+             'recordedByUid', 'checkOutTime', 'workDurationMinutes', 'status', 'notes', 'updatedAt'
+           ])) ||
+          // Action 2: Admin Correction
+          (isAdmin() &&
+           incoming().diff(existing()).affectedKeys().hasOnly([
+             'recordedByUid', 'checkInTime', 'checkOutTime', 'latitude', 'longitude',
+             'accuracyMeters', 'distanceMeters', 'isWithinGeofence', 'locationLabel',
+             'status', 'lateMinutes', 'workDurationMinutes', 'notes', 'updatedAt'
+           ]))
+        );
+      allow delete: if isSignedIn() && isValidId(logId) && isAdmin();
+    }
+
+    // Collection: /attendance_reminders/{reminderId}
+    match /attendance_reminders/{reminderId} {
+      allow get: if isSignedIn() && isValidId(reminderId) && (resource.data.targetUserId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.targetUserId == request.auth.uid || resource.data.senderUid == request.auth.uid || isBootstrappedAdmin());
+      allow create: if isSignedIn() && isValidId(reminderId) && isValidAttendanceReminder(incoming()) &&
+        incoming().reminderId == reminderId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        (incoming().targetUserId == request.auth.uid || isAdmin()) &&
+        exists(/databases/$(database)/documents/users/$(incoming().targetUserId));
+      allow update: if isSignedIn() && isValidId(reminderId) && isValidAttendanceReminder(incoming()) &&
+        incoming().reminderId == existing().reminderId &&
+        incoming().targetUserId == existing().targetUserId &&
+        incoming().dateStr == existing().dateStr &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (existing().status != 'acknowledged' || isAdmin()) && (
+          // Action 1: Employee acknowledges reminder
+          (request.auth.uid == existing().targetUserId &&
+           incoming().status == 'acknowledged' &&
+           incoming().diff(existing()).affectedKeys().hasOnly(['senderUid', 'status', 'updatedAt'])) ||
+          // Action 2: Admin updates reminder
+          (isAdmin() &&
+           incoming().diff(existing()).affectedKeys().hasOnly(['senderUid', 'message', 'status', 'updatedAt']))
+        );
+      allow delete: if isSignedIn() && isValidId(reminderId) && isAdmin();
+    }
+
+    // Collection: /payroll_records/{payrollId}
+    match /payroll_records/{payrollId} {
+      allow get: if isSignedIn() && isValidId(payrollId) && (resource.data.userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || resource.data.generatedByUid == request.auth.uid || isBootstrappedAdmin());
+      allow create: if isSignedIn() && isValidId(payrollId) && isValidPayrollRecord(incoming()) &&
+        incoming().payrollId == payrollId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        isAdmin() &&
+        exists(/databases/$(database)/documents/users/$(incoming().userId));
+      allow update: if isSignedIn() && isValidId(payrollId) && isValidPayrollRecord(incoming()) &&
+        incoming().payrollId == existing().payrollId &&
+        incoming().userId == existing().userId &&
+        incoming().monthStr == existing().monthStr &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (existing().status != 'paid' || isAdmin()) && (
+          // Action: Admin updates payroll calculation or approval status
+          (isAdmin() &&
+           incoming().diff(existing()).affectedKeys().hasOnly([
+             'generatedByUid', 'presentDays', 'lateDays', 'leaveDays', 'overtimeHours',
+             'baseSalary', 'totalAllowance', 'overtimePay', 'lateDeduction',
+             'bpjsTaxDeduction', 'netSalary', 'status', 'updatedAt'
+           ]))
+        );
+      allow delete: if isSignedIn() && isValidId(payrollId) && isAdmin();
+    }
+  }
+}

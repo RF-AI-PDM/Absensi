@@ -1,0 +1,621 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Data profil karyawan atau staf perusahaan beserta parameter gaji pokok dan status keamanan autentikasi dua faktor (2FA).",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID dokumen profil karyawan"
+        },
+        "createdByUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID pembuat profil yang wajib sama dengan request.auth.uid"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "description": "Nama lengkap karyawan"
+        },
+        "email": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 120,
+          "format": "email",
+          "description": "Alamat email resmi karyawan"
+        },
+        "department": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60,
+          "description": "Divisi atau departemen kerja"
+        },
+        "position": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "description": "Jabatan karyawan"
+        },
+        "employeeCode": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 32,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Nomor Induk Karyawan (NIK)"
+        },
+        "baseSalary": {
+          "type": "number",
+          "description": "Gaji pokok bulanan dalam Rupiah"
+        },
+        "dailyAllowance": {
+          "type": "number",
+          "description": "Tunjangan kehadiran harian (makan & transport) dalam Rupiah"
+        },
+        "latePenaltyRate": {
+          "type": "number",
+          "description": "Potongan keterlambatan per kejadian dalam Rupiah"
+        },
+        "twoFactorEnabled": {
+          "type": "boolean",
+          "description": "Status aktif atau tidaknya autentikasi dua faktor (2FA)"
+        },
+        "twoFactorSecret": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "Kunci rahasia TOTP Base32 untuk verifikasi 2FA"
+        },
+        "shiftStart": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 10,
+          "description": "Jam mulai shift kerja (contoh 08:30)"
+        },
+        "shiftEnd": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 10,
+          "description": "Jam selesai shift kerja (contoh 17:30)"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Waktu pembuatan profil"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Waktu pembaruan profil terakhir"
+        }
+      },
+      "required": [
+        "uid",
+        "createdByUid",
+        "name",
+        "email",
+        "department",
+        "position",
+        "employeeCode",
+        "baseSalary",
+        "dailyAllowance",
+        "latePenaltyRate",
+        "twoFactorEnabled",
+        "twoFactorSecret",
+        "shiftStart",
+        "shiftEnd",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "AdminRecord": {
+      "title": "AdminRecord",
+      "description": "Dokumen penanda hak akses administrator sistem.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID admin"
+        },
+        "email": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 120,
+          "description": "Email admin"
+        },
+        "grantedBy": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID pemberi akses"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Waktu pemberian akses"
+        }
+      },
+      "required": ["uid", "email", "grantedBy", "createdAt"]
+    },
+    "OfficeConfig": {
+      "title": "OfficeConfig",
+      "description": "Konfigurasi titik koordinat geofence kantor pusat dan aturan jam operasional absensi.",
+      "type": "object",
+      "properties": {
+        "configId": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "ID konfigurasi kantor"
+        },
+        "officeName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "description": "Nama gedung atau kantor cabang"
+        },
+        "address": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 250,
+          "description": "Alamat lengkap kantor"
+        },
+        "latitude": {
+          "type": "number",
+          "description": "Garis lintang titik pusat geofence kantor"
+        },
+        "longitude": {
+          "type": "number",
+          "description": "Garis bujur titik pusat geofence kantor"
+        },
+        "radiusMeters": {
+          "type": "number",
+          "description": "Batas radius kehadiran dalam meter"
+        },
+        "shiftStart": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 10,
+          "description": "Jam masuk standar"
+        },
+        "shiftEnd": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 10,
+          "description": "Jam pulang standar"
+        },
+        "lateGraceMinutes": {
+          "type": "number",
+          "description": "Toleransi keterlambatan dalam menit"
+        },
+        "autoReminderTime": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 10,
+          "description": "Waktu pengiriman pengingat otomatis"
+        },
+        "updatedBy": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID admin yang memperbarui konfigurasi"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Waktu pembaruan konfigurasi"
+        }
+      },
+      "required": [
+        "configId",
+        "officeName",
+        "address",
+        "latitude",
+        "longitude",
+        "radiusMeters",
+        "shiftStart",
+        "shiftEnd",
+        "lateGraceMinutes",
+        "autoReminderTime",
+        "updatedBy",
+        "updatedAt"
+      ]
+    },
+    "AttendanceLog": {
+      "title": "AttendanceLog",
+      "description": "Catatan kehadiran real-time karyawan lengkap dengan koordinat GPS, jarak geofence, dan durasi kerja.",
+      "type": "object",
+      "properties": {
+        "logId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "ID unik log absensi"
+        },
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID karyawan yang melakukan absensi"
+        },
+        "recordedByUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID pencatat absensi yang wajib sama dengan request.auth.uid"
+        },
+        "userName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "description": "Nama karyawan"
+        },
+        "department": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60,
+          "description": "Departemen karyawan"
+        },
+        "position": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "description": "Jabatan karyawan"
+        },
+        "dateStr": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "description": "Tanggal absensi YYYY-MM-DD"
+        },
+        "monthStr": {
+          "type": "string",
+          "minLength": 7,
+          "maxLength": 7,
+          "pattern": "^[0-9]{4}-[0-9]{2}$",
+          "description": "Periode bulan YYYY-MM untuk rekapitulasi"
+        },
+        "checkInTime": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 40,
+          "description": "Waktu check-in"
+        },
+        "checkOutTime": {
+          "type": "string",
+          "maxLength": 40,
+          "description": "Waktu check-out"
+        },
+        "latitude": {
+          "type": "number",
+          "description": "Koordinat garis lintang saat absen"
+        },
+        "longitude": {
+          "type": "number",
+          "description": "Koordinat garis bujur saat absen"
+        },
+        "accuracyMeters": {
+          "type": "number",
+          "description": "Akurasi GPS dalam meter"
+        },
+        "distanceMeters": {
+          "type": "number",
+          "description": "Jarak karyawan dari titik kantor dalam meter"
+        },
+        "isWithinGeofence": {
+          "type": "boolean",
+          "description": "Status apakah berada di dalam radius geofence kantor"
+        },
+        "locationLabel": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 180,
+          "description": "Deskripsi zona lokasi kehadiran"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "hadir_tepat_waktu",
+            "terlambat",
+            "izin",
+            "sakit",
+            "lembur",
+            "selesai_shift"
+          ],
+          "description": "Status kehadiran karyawan"
+        },
+        "lateMinutes": {
+          "type": "number",
+          "description": "Jumlah menit keterlambatan"
+        },
+        "workDurationMinutes": {
+          "type": "number",
+          "description": "Durasi kerja dalam menit"
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 300,
+          "description": "Catatan tugas atau keterangan kehadiran"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp server saat check-in"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp server saat pembaruan atau check-out"
+        }
+      },
+      "required": [
+        "logId",
+        "userId",
+        "recordedByUid",
+        "userName",
+        "department",
+        "position",
+        "dateStr",
+        "monthStr",
+        "checkInTime",
+        "checkOutTime",
+        "latitude",
+        "longitude",
+        "accuracyMeters",
+        "distanceMeters",
+        "isWithinGeofence",
+        "locationLabel",
+        "status",
+        "lateMinutes",
+        "workDurationMinutes",
+        "notes",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "AttendanceReminder": {
+      "title": "AttendanceReminder",
+      "description": "Notifikasi pengingat otomatis maupun manual untuk karyawan yang belum melakukan absensi.",
+      "type": "object",
+      "properties": {
+        "reminderId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "ID unik pengingat"
+        },
+        "targetUserId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID karyawan penerima pengingat"
+        },
+        "targetUserName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "description": "Nama karyawan penerima"
+        },
+        "senderUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID pengirim atau pemicu pengingat"
+        },
+        "dateStr": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "description": "Tanggal pengingat YYYY-MM-DD"
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300,
+          "description": "Isi pesan pengingat absensi"
+        },
+        "reminderType": {
+          "type": "string",
+          "enum": ["auto_morning", "admin_nudge", "checkout_reminder"],
+          "description": "Jenis pemicu pengingat"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["unread", "acknowledged"],
+          "description": "Status apakah pengingat sudah dibaca"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Waktu pembuatan pengingat"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Waktu pembaruan pengingat"
+        }
+      },
+      "required": [
+        "reminderId",
+        "targetUserId",
+        "targetUserName",
+        "senderUid",
+        "dateStr",
+        "message",
+        "reminderType",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "PayrollRecord": {
+      "title": "PayrollRecord",
+      "description": "Dokumen slip gaji bulanan hasil integrasi otomatis dengan rekapitulasi kehadiran karyawan.",
+      "type": "object",
+      "properties": {
+        "payrollId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "ID unik slip gaji"
+        },
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID karyawan penerima gaji"
+        },
+        "generatedByUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID pembuat rekap penggajian"
+        },
+        "employeeName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "description": "Nama karyawan"
+        },
+        "employeeCode": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 32,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "NIK karyawan"
+        },
+        "department": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60,
+          "description": "Departemen karyawan"
+        },
+        "position": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "description": "Jabatan karyawan"
+        },
+        "monthStr": {
+          "type": "string",
+          "minLength": 7,
+          "maxLength": 7,
+          "pattern": "^[0-9]{4}-[0-9]{2}$",
+          "description": "Periode bulan penggajian YYYY-MM"
+        },
+        "presentDays": {
+          "type": "number",
+          "description": "Total hari hadir"
+        },
+        "lateDays": {
+          "type": "number",
+          "description": "Total hari terlambat"
+        },
+        "leaveDays": {
+          "type": "number",
+          "description": "Total hari izin atau sakit"
+        },
+        "overtimeHours": {
+          "type": "number",
+          "description": "Total jam lembur"
+        },
+        "baseSalary": {
+          "type": "number",
+          "description": "Gaji pokok bulanan"
+        },
+        "totalAllowance": {
+          "type": "number",
+          "description": "Total tunjangan kehadiran"
+        },
+        "overtimePay": {
+          "type": "number",
+          "description": "Total upah lembur"
+        },
+        "lateDeduction": {
+          "type": "number",
+          "description": "Total potongan keterlambatan"
+        },
+        "bpjsTaxDeduction": {
+          "type": "number",
+          "description": "Potongan BPJS & PPh21"
+        },
+        "netSalary": {
+          "type": "number",
+          "description": "Total gaji bersih (Take Home Pay)"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["draft", "approved", "paid"],
+          "description": "Status pencairan penggajian"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp pembuatan slip gaji"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp pembaruan slip gaji"
+        }
+      },
+      "required": [
+        "payrollId",
+        "userId",
+        "generatedByUid",
+        "employeeName",
+        "employeeCode",
+        "department",
+        "position",
+        "monthStr",
+        "presentDays",
+        "lateDays",
+        "leaveDays",
+        "overtimeHours",
+        "baseSalary",
+        "totalAllowance",
+        "overtimePay",
+        "lateDeduction",
+        "bpjsTaxDeduction",
+        "netSalary",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Koleksi profil karyawan, parameter gaji, dan konfigurasi 2FA"
+    },
+    "/admins/{adminId}": {
+      "schema": { "$ref": "#/entities/AdminRecord" },
+      "description": "Koleksi otorisasi administrator"
+    },
+    "/office_configs/{configId}": {
+      "schema": { "$ref": "#/entities/OfficeConfig" },
+      "description": "Koleksi konfigurasi geofence kantor dan aturan jam kerja"
+    },
+    "/attendance_logs/{logId}": {
+      "schema": { "$ref": "#/entities/AttendanceLog" },
+      "description": "Koleksi log kehadiran karyawan secara real-time beserta koordinat GPS"
+    },
+    "/attendance_reminders/{reminderId}": {
+      "schema": { "$ref": "#/entities/AttendanceReminder" },
+      "description": "Koleksi pengingat otomatis dan manual untuk absensi karyawan"
+    },
+    "/payroll_records/{payrollId}": {
+      "schema": { "$ref": "#/entities/PayrollRecord" },
+      "description": "Koleksi slip penggajian bulanan terintegrasi absensi"
+    }
+  }
+}
