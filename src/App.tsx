@@ -35,6 +35,7 @@ import {
   Plus,
   Send,
   ShieldCheck,
+  Trash2,
   Users,
   X,
 } from 'lucide-react';
@@ -64,14 +65,18 @@ import {
   calculateDistanceMeters,
   calculateLateMinutes,
   calculateWorkDurationMinutes,
+  convertDDToDMS,
   DEFAULT_OFFICE_CONFIG,
   evaluateMultiUnitGeofence,
   formatCoordinates,
   formatDurationHoursMinutes,
   getCurrentMonthStr,
   getCurrentTimeHHMMSS,
+  getRegisteredPowerUnits,
   getTodayDateStr,
   IPS_POWER_UNITS,
+  PowerPlantUnit,
+  saveRegisteredPowerUnits,
 } from './utils/geo';
 import { computeTotpCode, getRemainingTotpSeconds, verifyTotpCode } from './utils/totp';
 import { exportAttendanceToExcel, exportAttendanceToPDF } from './utils/exporter';
@@ -81,6 +86,7 @@ import { RecapAndPayrollView } from './components/RecapAndPayrollView';
 import { TwoFactorPanel } from './components/TwoFactorPanel';
 import { EnterpriseAgentView } from './components/EnterpriseAgentView';
 import { AttendanceTrendChart } from './components/AttendanceTrendChart';
+import { AddPowerPlantModal } from './components/AddPowerPlantModal';
 
 type NavTab = 'monitoring' | 'terminal' | 'recap' | 'payroll' | 'security' | 'agent';
 
@@ -135,7 +141,12 @@ export default function App() {
   });
   const [toastBanner, setToastBanner] = useState<string | null>(null);
   const [seedingDemo, setSeedingDemo] = useState(false);
-  const [quickUnitId, setQuickUnitId] = useState<string>(IPS_POWER_UNITS[0].unitId);
+  const [powerUnits, setPowerUnits] = useState<PowerPlantUnit[]>(() => getRegisteredPowerUnits());
+  const [showAddPowerPlantModal, setShowAddPowerPlantModal] = useState<boolean>(false);
+  const [quickUnitId, setQuickUnitId] = useState<string>(() => {
+    const list = getRegisteredPowerUnits();
+    return list[0]?.unitId || IPS_POWER_UNITS[0].unitId;
+  });
   const [quickActionBusy, setQuickActionBusy] = useState(false);
   const [editingLog, setEditingLog] = useState<AttendanceLog | null>(null);
   const [editLogForm, setEditLogForm] = useState<{
@@ -1201,6 +1212,25 @@ export default function App() {
     }
   };
 
+  const handleAddPowerUnit = (newUnit: PowerPlantUnit) => {
+    const updated = [...powerUnits, newUnit];
+    setPowerUnits(updated);
+    saveRegisteredPowerUnits(updated);
+    showToast(`Unit pembangkit baru ${newUnit.name} (${newUnit.code}) berhasil didaftarkan ke sistem geofence!`);
+  };
+
+  const handleRemovePowerUnit = (unitId: string) => {
+    const target = powerUnits.find((u) => u.unitId === unitId);
+    if (!target) return;
+    if (!window.confirm(`Apakah Anda yakin ingin menghapus unit pembangkit "${target.name}" (${target.code}) dari sistem geofence?`)) {
+      return;
+    }
+    const updated = powerUnits.filter((u) => u.unitId !== unitId);
+    setPowerUnits(updated);
+    saveRegisteredPowerUnits(updated);
+    showToast(`Unit pembangkit ${target.name} telah dihapus dari sistem geofence.`);
+  };
+
   // Loading Screen
   if (!authReady) {
     return (
@@ -1619,7 +1649,7 @@ export default function App() {
                   onChange={(e) => setQuickUnitId(e.target.value)}
                   className="px-3 py-2 text-xs font-medium border border-slate-300 rounded-lg bg-slate-50 text-slate-900"
                 >
-                  {IPS_POWER_UNITS.map((u) => (
+                  {powerUnits.map((u) => (
                     <option key={u.unitId} value={u.unitId}>
                       Unit: {u.name} ({u.code})
                     </option>
@@ -1944,6 +1974,7 @@ export default function App() {
             isAdmin={isAdmin}
             allUsers={allUsers}
             shiftSwaps={shiftSwaps}
+            powerUnits={powerUnits}
             onRequestShiftSwap={handleRequestShiftSwap}
             onReviewShiftSwap={handleReviewShiftSwap}
             onCancelShiftSwap={handleCancelShiftSwap}
@@ -2006,48 +2037,97 @@ export default function App() {
 
             {isAdmin && (
               <div className="border border-slate-200 bg-white rounded-xl p-6 space-y-5">
-                <div className="border-b border-slate-200 pb-4">
-                  <h2 className="text-lg font-semibold text-slate-900">
-                    Konfigurasi Geofence 4 Unit Pembangkit Indonesia Power Service (Lombok & Sumbawa)
-                  </h2>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Karyawan yang berpindah tugas antar 4 unit resmi di bawah ini otomatis
-                    tervalidasi selama berada di dalam batas radius meter yang ditentukan.
-                  </p>
+                <div className="border-b border-slate-200 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <h2 className="text-lg font-semibold text-slate-900">
+                      Konfigurasi Geofence Unit Pembangkit Indonesia Power Service ({powerUnits.length} Unit Terdaftar)
+                    </h2>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Karyawan yang berpindah tugas antar unit resmi di bawah ini otomatis
+                      tervalidasi selama berada di dalam batas radius meter yang ditentukan.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddPowerPlantModal(true)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-emerald-700 hover:bg-emerald-600 rounded-lg shadow-xs transition-colors shrink-0"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Tambah Unit Pembangkit Baru</span>
+                  </button>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-                  {IPS_POWER_UNITS.map((unit) => (
+                  {powerUnits.map((unit) => (
                     <div
                       key={unit.unitId}
-                      className="p-3.5 border border-slate-200 rounded-lg bg-slate-50 flex flex-col justify-between gap-2"
+                      className={`p-3.5 border rounded-lg flex flex-col justify-between gap-3 ${
+                        unit.isCustom ? 'border-emerald-200 bg-emerald-50/30' : 'border-slate-200 bg-slate-50'
+                      }`}
                     >
                       <div>
-                        <div className="font-mono tabular-nums text-slate-500">
-                          {unit.code} · {unit.region}
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-mono tabular-nums font-semibold text-slate-600">
+                            {unit.code} · {unit.region}
+                          </span>
+                          {unit.isCustom ? (
+                            <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                              Unit Baru
+                            </span>
+                          ) : (
+                            <span className="px-1.5 py-0.5 rounded bg-slate-200/80 text-slate-600 text-[10px]">
+                              Bawaan
+                            </span>
+                          )}
                         </div>
-                        <div className="font-semibold text-slate-900 mt-0.5">{unit.name}</div>
-                        <div className="text-slate-600 mt-1">{unit.address}</div>
+                        <div className="font-semibold text-slate-900 mt-1">{unit.name}</div>
+                        <div className="text-slate-600 mt-1 line-clamp-2" title={unit.address}>
+                          {unit.address}
+                        </div>
                       </div>
-                      <div className="pt-2 border-t border-slate-200 flex items-center justify-between">
-                        <span className="font-mono tabular-nums text-slate-500">
-                          {unit.latitude.toFixed(4)}, {unit.longitude.toFixed(4)}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setOfficeConfig({
-                              ...officeConfig,
-                              officeName: unit.name,
-                              address: unit.address,
-                              latitude: unit.latitude,
-                              longitude: unit.longitude,
-                            })
-                          }
-                          className="font-medium text-slate-900 underline"
-                        >
-                          Jadikan Unit Utama
-                        </button>
+
+                      <div className="space-y-2 pt-2 border-t border-slate-200/80">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="font-mono tabular-nums font-semibold text-slate-800 text-[11px]">
+                            {unit.latitude.toFixed(6)}, {unit.longitude.toFixed(6)}
+                          </span>
+                          <span className="font-mono text-[10px] text-slate-500">
+                            DMS: {convertDDToDMS(unit.latitude, true)}, {convertDDToDMS(unit.longitude, false)}
+                          </span>
+                          <span className="text-[10px] text-slate-500 font-mono">
+                            Radius Geofence: {unit.defaultRadiusMeters}m
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setOfficeConfig({
+                                ...officeConfig,
+                                officeName: unit.name,
+                                address: unit.address,
+                                latitude: unit.latitude,
+                                longitude: unit.longitude,
+                                radiusMeters: unit.defaultRadiusMeters || officeConfig.radiusMeters,
+                              })
+                            }
+                            className="font-medium text-xs text-slate-900 underline hover:text-emerald-700"
+                          >
+                            Jadikan Unit Utama
+                          </button>
+
+                          {unit.isCustom && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemovePowerUnit(unit.unitId)}
+                              title="Hapus unit pembangkit ini"
+                              className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -2537,6 +2617,13 @@ export default function App() {
           </div>
         </div>
       )}
+      {/* Modal Tambah Unit Pembangkit Baru (Geofence) */}
+      <AddPowerPlantModal
+        isOpen={showAddPowerPlantModal}
+        onClose={() => setShowAddPowerPlantModal(false)}
+        onAddUnit={handleAddPowerUnit}
+        existingUnits={powerUnits}
+      />
     </div>
   );
 }

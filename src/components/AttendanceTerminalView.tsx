@@ -21,7 +21,9 @@ import {
   evaluateMultiUnitGeofence,
   formatCoordinates,
   formatDurationHoursMinutes,
+  getRegisteredPowerUnits,
   IPS_POWER_UNITS,
+  PowerPlantUnit,
 } from '../utils/geo';
 import { ShiftSwapManager } from './ShiftSwapManager';
 
@@ -43,6 +45,7 @@ interface AttendanceTerminalViewProps {
   isAdmin?: boolean;
   allUsers?: UserProfile[];
   shiftSwaps?: ShiftSwapRequest[];
+  powerUnits?: PowerPlantUnit[];
   onRequestShiftSwap?: (
     data: Omit<ShiftSwapRequest, 'swapId' | 'status' | 'createdAt' | 'updatedAt'>
   ) => Promise<void>;
@@ -65,10 +68,12 @@ export const AttendanceTerminalView: React.FC<AttendanceTerminalViewProps> = ({
   isAdmin = false,
   allUsers = [],
   shiftSwaps = [],
+  powerUnits,
   onRequestShiftSwap,
   onReviewShiftSwap,
   onCancelShiftSwap,
 }) => {
+  const activeUnits = powerUnits && powerUnits.length > 0 ? powerUnits : getRegisteredPowerUnits();
   // Local fallback state for Shift Swaps if parent handlers are not provided
   const [internalShiftSwaps, setInternalShiftSwaps] = useState<ShiftSwapRequest[]>([]);
   const effectiveShiftSwaps = shiftSwaps.length > 0 ? shiftSwaps : internalShiftSwaps;
@@ -121,15 +126,16 @@ export const AttendanceTerminalView: React.FC<AttendanceTerminalViewProps> = ({
       prev.map((s) => (s.swapId === swapId ? { ...s, status: 'cancelled' } : s))
     );
   };
-  // Default simulation starts at PLTU Jeranjang Gerung
+  // Default simulation starts at activeUnits[0]
+  const defaultUnit = activeUnits[0] || IPS_POWER_UNITS[0];
   const [coords, setCoords] = useState<{
     lat: number;
     lng: number;
     accuracy: number;
     source: 'gps' | 'unit_sim';
   }>({
-    lat: IPS_POWER_UNITS[0].latitude + 0.00028,
-    lng: IPS_POWER_UNITS[0].longitude - 0.00021,
+    lat: defaultUnit.latitude + 0.00028,
+    lng: defaultUnit.longitude - 0.00021,
     accuracy: 10,
     source: 'unit_sim',
   });
@@ -144,7 +150,8 @@ export const AttendanceTerminalView: React.FC<AttendanceTerminalViewProps> = ({
   const multiUnitEval = evaluateMultiUnitGeofence(
     coords.lat,
     coords.lng,
-    officeConfig.radiusMeters
+    officeConfig.radiusMeters,
+    activeUnits
   );
   const { nearestUnit, nearestDistanceMeters, isWithinAnyUnit, allUnitDistances } = multiUnitEval;
 
@@ -349,13 +356,13 @@ export const AttendanceTerminalView: React.FC<AttendanceTerminalViewProps> = ({
             </div>
           </div>
 
-          {/* Simulasi Perpindahan Antar 4 Unit Kerja (Untuk Pengujian Cepat) */}
+          {/* Simulasi Perpindahan Antar Unit Kerja (Untuk Pengujian Cepat) */}
           <div className="space-y-2">
             <span className="text-xs font-medium text-slate-700 block">
-              Simulasi Posisi Staf Saat Bertugas / Pindah Unit Kerja (Klik untuk Uji Jarak):
+              Simulasi Posisi Staf Saat Bertugas / Pindah Unit Kerja ({activeUnits.length} Unit Terdaftar):
             </span>
             <div className="flex flex-wrap items-center gap-2 text-xs">
-              {IPS_POWER_UNITS.map((unit, idx) => {
+              {activeUnits.map((unit, idx) => {
                 const offsets = [
                   { dLat: 0.00028, dLng: -0.00021 }, // ~38m
                   { dLat: -0.00022, dLng: 0.00025 }, // ~36m
@@ -404,7 +411,7 @@ export const AttendanceTerminalView: React.FC<AttendanceTerminalViewProps> = ({
                     : 'bg-red-50 text-red-800 border-red-200 hover:bg-red-100'
                 }`}
               >
-                Simulasi di Luar 4 Unit (Uji Blokir Curang)
+                Simulasi di Luar Seluruh Unit (Uji Blokir Curang)
               </button>
             </div>
           </div>
@@ -591,13 +598,13 @@ export const AttendanceTerminalView: React.FC<AttendanceTerminalViewProps> = ({
           )}
         </div>
 
-        {/* Right: Live Distance Table to All 4 Indonesia Power Service Units */}
+        {/* Right: Live Distance Table to All Registered Indonesia Power Service Units */}
         <div className="lg:col-span-5 border border-slate-200 bg-white rounded-xl p-6 flex flex-col justify-between space-y-6">
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-xs font-semibold text-slate-900">
                 <Clock className="w-4 h-4 text-slate-700" />
-                <span>Radar Jarak ke 4 Unit Indonesia Power Service</span>
+                <span>Radar Jarak ke {activeUnits.length} Unit Indonesia Power Service</span>
               </div>
               <span className="text-xs font-mono tabular-nums text-slate-500">
                 Radius Sah: ≤ {officeConfig.radiusMeters}m
