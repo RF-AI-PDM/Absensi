@@ -17,7 +17,7 @@ export function exportAttendanceToPDF(logs: AttendanceLog[], periodLabel: string
   const doc = new jsPDF({ orientation: 'landscape' });
 
   doc.setFontSize(16);
-  doc.text('HadirPro — Laporan Kehadiran & Geolokasi Real-Time', 14, 16);
+  doc.text('HADIROT — Laporan Kehadiran & Geolokasi Real-Time', 14, 16);
   doc.setFontSize(10);
   doc.setTextColor(100);
   doc.text(`Periode: ${periodLabel}  |  Dicetak pada: ${new Date().toLocaleString('id-ID')}`, 14, 23);
@@ -58,7 +58,7 @@ export function exportAttendanceToPDF(logs: AttendanceLog[], periodLabel: string
     headStyles: { fillColor: [15, 23, 42] },
   });
 
-  doc.save(`HadirPro_Absensi_${periodLabel.replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`);
+  doc.save(`HADIROT_Absensi_${periodLabel.replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`);
 }
 
 export function exportAttendanceToExcel(logs: AttendanceLog[], periodLabel: string) {
@@ -86,14 +86,14 @@ export function exportAttendanceToExcel(logs: AttendanceLog[], periodLabel: stri
   const worksheet = XLSX.utils.json_to_sheet(data);
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, 'Log_Absensi');
-  XLSX.writeFile(workbook, `HadirPro_Absensi_${periodLabel.replace(/[^a-zA-Z0-9_-]/g, '_')}.xlsx`);
+  XLSX.writeFile(workbook, `HADIROT_Absensi_${periodLabel.replace(/[^a-zA-Z0-9_-]/g, '_')}.xlsx`);
 }
 
 export function exportMonthlyRecapToPDF(recaps: MonthlyRecapItem[], monthStr: string) {
   const doc = new jsPDF({ orientation: 'landscape' });
 
   doc.setFontSize(16);
-  doc.text(`HadirPro — Rekapitulasi Kehadiran & Kinerja Bulanan (${monthStr})`, 14, 16);
+  doc.text(`HADIROT — Rekapitulasi Kehadiran & Kinerja Bulanan (${monthStr})`, 14, 16);
   doc.setFontSize(10);
   doc.setTextColor(100);
   doc.text(`Otomatisasi Rekapitulasi Bulanan & Estimasi Penggajian  |  Dicetak: ${new Date().toLocaleString('id-ID')}`, 14, 23);
@@ -134,14 +134,14 @@ export function exportMonthlyRecapToPDF(recaps: MonthlyRecapItem[], monthStr: st
     headStyles: { fillColor: [15, 23, 42] },
   });
 
-  doc.save(`HadirPro_Rekap_Bulanan_${monthStr}.pdf`);
+  doc.save(`HADIROT_Rekap_Bulanan_${monthStr}.pdf`);
 }
 
 export function exportPayrollToPDF(records: PayrollRecord[], monthStr: string) {
   const doc = new jsPDF({ orientation: 'landscape' });
 
   doc.setFontSize(16);
-  doc.text(`HadirPro — Laporan Penggajian Karyawan Terintegrasi (${monthStr})`, 14, 16);
+  doc.text(`HADIROT — Laporan Penggajian Karyawan Terintegrasi (${monthStr})`, 14, 16);
   doc.setFontSize(10);
   doc.setTextColor(100);
   doc.text(`Integrasi Absensi & Slip Gaji Bulanan  |  Dicetak: ${new Date().toLocaleString('id-ID')}`, 14, 23);
@@ -184,7 +184,7 @@ export function exportPayrollToPDF(records: PayrollRecord[], monthStr: string) {
     headStyles: { fillColor: [15, 23, 42] },
   });
 
-  doc.save(`HadirPro_Payroll_${monthStr}.pdf`);
+  doc.save(`HADIROT_Payroll_${monthStr}.pdf`);
 }
 
 export function exportPayrollToExcel(records: PayrollRecord[], monthStr: string) {
@@ -211,5 +211,5 @@ export function exportPayrollToExcel(records: PayrollRecord[], monthStr: string)
   const worksheet = XLSX.utils.json_to_sheet(data);
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, 'Payroll_Bulanan');
-  XLSX.writeFile(workbook, `HadirPro_Payroll_${monthStr}.xlsx`);
+  XLSX.writeFile(workbook, `HADIROT_Payroll_${monthStr}.xlsx`);
 }

@@ -23,3 +23,56 @@
     font-variant-numeric: tabular-nums;
   }
 }
+
+/* Marker hover enlargement & tooltip styling inside .leaflet-container */
+.leaflet-container .ips-unit-marker,
+.leaflet-container .ips-emp-marker {
+  transition: z-index 0.15s ease;
+}
+
+.leaflet-container .ips-unit-marker:hover,
+.leaflet-container .ips-emp-marker:hover {
+  z-index: 1000 !important;
+}
+
+.leaflet-container .ips-unit-marker-badge {
+  transform: translate(-50%, -50%) scale(1);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease, border-color 0.2s ease;
+  cursor: pointer;
+}
+
+.leaflet-container .ips-unit-marker:hover .ips-unit-marker-badge,
+.leaflet-container .ips-unit-marker-badge.is-hovered {
+  transform: translate(-50%, -50%) scale(1.18);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.45) !important;
+  border-color: #f59e0b !important;
+}
+
+.leaflet-container .ips-emp-marker-badge {
+  transform: translate(-50%, -100%) scale(1);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
+  cursor: pointer;
+}
+
+.leaflet-container .ips-emp-marker:hover .ips-emp-marker-badge,
+.leaflet-container .ips-emp-marker-badge.is-hovered {
+  transform: translate(-50%, -100%) scale(1.18);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.35) !important;
+}
+
+.leaflet-tooltip.ips-hover-tooltip {
+  background-color: #0f172a;
+  color: #f8fafc;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  line-height: 1.35;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.35);
+}
+
+.leaflet-tooltip-top.ips-hover-tooltip::before {
+  border-top-color: #0f172a;
+}
+

@@ -166,7 +166,7 @@ export default function App() {
               VALIDATION_CONSTRAINTS.NAME_MAX_LEN
             ),
             email: sanitizeString(
-              u.email || 'user@hadirpro.id',
+              u.email || 'user@hadirot.id',
               VALIDATION_CONSTRAINTS.EMAIL_MAX_LEN
             ),
             department: adminFlag ? 'Manajemen Eksekutif' : 'Operasional & Teknologi',
@@ -869,7 +869,7 @@ export default function App() {
         <div className="text-center space-y-2">
           <div className="w-8 h-8 border-2 border-slate-900 border-t-transparent rounded-full animate-spin mx-auto" />
           <p className="text-xs font-medium text-slate-600">
-            Menghubungkan ke server geospasial & autentikasi HadirPro...
+            Menghubungkan ke server geospasial & autentikasi HADIROT...
           </p>
         </div>
       </div>
@@ -882,7 +882,7 @@ export default function App() {
       <div className="min-h-screen bg-slate-50 flex flex-col justify-between">
         <header className="flex items-center justify-between px-6 lg:px-12 py-4 border-b border-slate-200 bg-white">
           <a href="#top" className="text-xl font-bold tracking-tight text-slate-900 font-display">
-            HadirPro
+            HADIROT
           </a>
           <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600">
             <a href="#fitur" className="hover:text-slate-900 transition-colors">
@@ -919,7 +919,7 @@ export default function App() {
               Pantau Lokasi & Waktu Kehadiran Staf Secara Real-Time, Otomatis Hingga Slip Gaji.
             </h1>
             <p className="text-base text-slate-600 leading-relaxed max-w-2xl">
-              HadirPro menyatukan validasi radius geofence GPS, pengingat otomatis bagi karyawan
+              HADIROT menyatukan validasi radius geofence GPS, pengingat otomatis bagi karyawan
               yang belum absen, rekapitulasi kinerja bulanan, integrasi penggajian langsung,
               ekspor laporan PDF & Excel, serta proteksi Autentikasi Dua Faktor (2FA TOTP).
             </p>
@@ -930,7 +930,7 @@ export default function App() {
                 className="inline-flex items-center gap-2.5 px-6 py-3 text-sm font-semibold text-white bg-slate-900 rounded-xl hover:bg-slate-800 transition-colors"
               >
                 <LogIn className="w-4 h-4" />
-                Masuk ke Dashboard HadirPro
+                Masuk ke Dashboard HADIROT
               </button>
             </div>
           </div>
@@ -981,7 +981,7 @@ export default function App() {
         </main>
 
         <footer className="px-6 lg:px-12 py-6 border-t border-slate-200 text-xs text-slate-500 flex flex-wrap justify-between gap-4 bg-white">
-          <span>HadirPro Enterprise Attendance & Payroll System</span>
+          <span>HADIROT Enterprise Attendance & Payroll System</span>
           <span>Dilengkapi Enkripsi Aturan Firestore & 2FA TOTP</span>
         </footer>
       </div>
@@ -1102,7 +1102,7 @@ export default function App() {
           }}
           className="text-lg font-bold tracking-tight text-slate-900 font-display whitespace-nowrap"
         >
-          HadirPro
+          HADIROT
         </a>
 
         <nav className="hidden md:flex items-center gap-6 text-xs font-medium text-slate-600">

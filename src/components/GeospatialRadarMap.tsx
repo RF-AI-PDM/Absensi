@@ -4,6 +4,7 @@ import {
   TileLayer,
   Marker,
   Popup,
+  Tooltip,
   Circle,
   useMap,
 } from 'react-leaflet';
@@ -61,20 +62,29 @@ function matchesMarkerStatusFilter(status: string, filter: MapMarkerStatusFilter
   return true;
 }
 
+interface FocusedMapTarget {
+  coords: [number, number];
+  zoom: number;
+  triggerId: number;
+}
+
 interface MapViewportControllerProps {
   selectedUnitFilter: string;
-  focusedCoords: [number, number] | null;
+  focusedTarget: FocusedMapTarget | null;
 }
 
 const MapViewportController: React.FC<MapViewportControllerProps> = ({
   selectedUnitFilter,
-  focusedCoords,
+  focusedTarget,
 }) => {
   const map = useMap();
 
   useEffect(() => {
-    if (focusedCoords) {
-      map.flyTo(focusedCoords, 16, { duration: 0.9 });
+    if (focusedTarget) {
+      map.flyTo(focusedTarget.coords, focusedTarget.zoom, {
+        animate: true,
+        duration: 0.9,
+      });
       return;
     }
 
@@ -86,10 +96,13 @@ const MapViewportController: React.FC<MapViewportControllerProps> = ({
     } else {
       const target = IPS_POWER_UNITS.find((u) => u.unitId === selectedUnitFilter);
       if (target) {
-        map.flyTo([target.latitude, target.longitude], 16, { duration: 0.9 });
+        map.flyTo([target.latitude, target.longitude], 15, {
+          animate: true,
+          duration: 0.9,
+        });
       }
     }
-  }, [map, selectedUnitFilter, focusedCoords]);
+  }, [map, selectedUnitFilter, focusedTarget]);
 
   return null;
 };
@@ -98,19 +111,20 @@ function createUnitMarkerIcon(
   unit: PowerPlantUnit,
   activeCount: number,
   isMostActive: boolean,
-  isSelected: boolean
+  isSelected: boolean,
+  isHovered: boolean
 ): L.DivIcon {
   const bg = isMostActive
     ? '#047857'
     : activeCount > 0
     ? '#0f172a'
     : '#475569';
-  const border = isSelected ? '#f59e0b' : '#ffffff';
+  const border = isSelected || isHovered ? '#f59e0b' : '#ffffff';
 
   return L.divIcon({
     className: 'ips-unit-marker',
     html: `
-      <div style="
+      <div class="ips-unit-marker-badge ${isHovered ? 'is-hovered' : ''}" style="
         display: inline-flex;
         align-items: center;
         gap: 6px;
@@ -124,7 +138,6 @@ function createUnitMarkerIcon(
         font-weight: 600;
         white-space: nowrap;
         box-shadow: 0 4px 12px rgba(15, 23, 42, 0.35);
-        transform: translate(-50%, -50%);
       ">
         <span style="
           display: inline-block;
@@ -152,7 +165,8 @@ function createEmployeeMarkerIcon(
   userName: string,
   isInsideUnit: boolean,
   status: string,
-  isSelected: boolean
+  isSelected: boolean,
+  isHovered: boolean
 ): L.DivIcon {
   const dotColor =
     status === 'izin' || status === 'sakit'
@@ -167,12 +181,12 @@ function createEmployeeMarkerIcon(
   return L.divIcon({
     className: 'ips-emp-marker',
     html: `
-      <div style="
+      <div class="ips-emp-marker-badge ${isHovered ? 'is-hovered' : ''}" style="
         display: inline-flex;
         align-items: center;
         gap: 4px;
-        background: ${isSelected ? '#0f172a' : '#ffffff'};
-        color: ${isSelected ? '#ffffff' : '#0f172a'};
+        background: ${isSelected || isHovered ? '#0f172a' : '#ffffff'};
+        color: ${isSelected || isHovered ? '#ffffff' : '#0f172a'};
         border: 1.5px solid ${dotColor};
         border-radius: 6px;
         padding: 2px 6px;
@@ -181,7 +195,6 @@ function createEmployeeMarkerIcon(
         font-weight: 600;
         white-space: nowrap;
         box-shadow: 0 2px 6px rgba(15, 23, 42, 0.2);
-        transform: translate(-50%, -100%);
       ">
         <span style="
           width: 6px;
@@ -209,7 +222,8 @@ export const GeospatialRadarMap: React.FC<GeospatialRadarMapProps> = ({
   const [selectedLogId, setSelectedLogId] = useState<string | null>(
     logs.length > 0 ? logs[0].logId : null
   );
-  const [focusedCoords, setFocusedCoords] = useState<[number, number] | null>(null);
+  const [hoveredMarkerId, setHoveredMarkerId] = useState<string | null>(null);
+  const [focusedTarget, setFocusedTarget] = useState<FocusedMapTarget | null>(null);
 
   // Enrich logs with nearest unit evaluation
   const enrichedLogs = useMemo(
@@ -269,33 +283,36 @@ export const GeospatialRadarMap: React.FC<GeospatialRadarMapProps> = ({
   // Compute activity count per unit & determine most active site
   const unitStats = useMemo(() => {
     const counts = IPS_POWER_UNITS.map((unit) => {
-      const unitLogs = enrichedLogs.filter(
-        (e) =>
-          e.nearestUnit.unitId === unit.unitId &&
-          matchesMarkerStatusFilter(e.log.status, markerStatusFilter)
+      const allLogsAtUnit = enrichedLogs.filter(
+        (e) => e.nearestUnit.unitId === unit.unitId
       );
-      const onTime = unitLogs.filter((e) =>
+      const filteredLogsAtUnit = allLogsAtUnit.filter((e) =>
+        matchesMarkerStatusFilter(e.log.status, markerStatusFilter)
+      );
+      const onTime = allLogsAtUnit.filter((e) =>
         matchesMarkerStatusFilter(e.log.status, 'hadir')
       ).length;
-      const late = unitLogs.filter((e) =>
+      const late = allLogsAtUnit.filter((e) =>
         matchesMarkerStatusFilter(e.log.status, 'terlambat')
       ).length;
-      const izinCount = unitLogs.filter((e) =>
+      const izinCount = allLogsAtUnit.filter((e) =>
         matchesMarkerStatusFilter(e.log.status, 'izin')
       ).length;
       return {
         unit,
-        totalCount: unitLogs.length,
+        totalAllStaffCount: allLogsAtUnit.length,
+        totalCount: filteredLogsAtUnit.length,
         onTime,
         late,
         izinCount,
+        staffList: allLogsAtUnit,
       };
     });
 
-    const maxCount = Math.max(0, ...counts.map((c) => c.totalCount));
+    const maxCount = Math.max(0, ...counts.map((c) => c.totalAllStaffCount));
     return counts.map((c) => ({
       ...c,
-      isMostActive: maxCount > 0 && c.totalCount === maxCount,
+      isMostActive: maxCount > 0 && c.totalAllStaffCount === maxCount,
     }));
   }, [enrichedLogs, markerStatusFilter]);
 
@@ -315,12 +332,27 @@ export const GeospatialRadarMap: React.FC<GeospatialRadarMapProps> = ({
 
   const handleSelectUnitFilter = (unitId: string) => {
     setSelectedUnitFilter(unitId);
-    setFocusedCoords(null);
+    if (unitId === 'all') {
+      setFocusedTarget(null);
+    } else {
+      const target = IPS_POWER_UNITS.find((u) => u.unitId === unitId);
+      if (target) {
+        setFocusedTarget({
+          coords: [target.latitude, target.longitude],
+          zoom: 15,
+          triggerId: Date.now(),
+        });
+      }
+    }
   };
 
   const handleFocusEmployee = (logId: string, lat: number, lng: number) => {
     setSelectedLogId(logId);
-    setFocusedCoords([lat, lng]);
+    setFocusedTarget({
+      coords: [lat, lng],
+      zoom: 16,
+      triggerId: Date.now(),
+    });
   };
 
   return (
@@ -447,58 +479,164 @@ export const GeospatialRadarMap: React.FC<GeospatialRadarMapProps> = ({
 
               <MapViewportController
                 selectedUnitFilter={selectedUnitFilter}
-                focusedCoords={focusedCoords}
+                focusedTarget={focusedTarget}
               />
 
               {/* Render All 4 Power Plant Units + Geofence Circles */}
-              {unitStats.map(({ unit, totalCount, onTime, late, izinCount, isMostActive }) => {
-                const isSelected = selectedUnitFilter === unit.unitId;
-                return (
-                  <React.Fragment key={unit.unitId}>
-                    {showGeofenceCircles && (
-                      <Circle
-                        center={[unit.latitude, unit.longitude]}
-                        radius={officeConfig.radiusMeters}
-                        pathOptions={{
-                          color: isMostActive ? '#059669' : '#0f172a',
-                          fillColor: isMostActive ? '#10b981' : '#3b82f6',
-                          fillOpacity: 0.18,
-                          weight: 2,
-                        }}
-                      />
-                    )}
+              {unitStats.map(
+                ({
+                  unit,
+                  totalAllStaffCount,
+                  totalCount,
+                  onTime,
+                  late,
+                  izinCount,
+                  staffList,
+                  isMostActive,
+                }) => {
+                  const isSelected = selectedUnitFilter === unit.unitId;
+                  const isHovered = hoveredMarkerId === `unit-${unit.unitId}`;
+                  return (
+                    <React.Fragment key={unit.unitId}>
+                      {showGeofenceCircles && (
+                        <Circle
+                          center={[unit.latitude, unit.longitude]}
+                          radius={officeConfig.radiusMeters}
+                          pathOptions={{
+                            color: isMostActive ? '#059669' : '#0f172a',
+                            fillColor: isMostActive ? '#10b981' : '#3b82f6',
+                            fillOpacity: 0.18,
+                            weight: 2,
+                          }}
+                        />
+                      )}
 
-                    <Marker
-                      position={[unit.latitude, unit.longitude]}
-                      icon={createUnitMarkerIcon(unit, totalCount, isMostActive, isSelected)}
-                      eventHandlers={{
-                        click: () => handleSelectUnitFilter(unit.unitId),
-                      }}
-                    >
-                      <Popup>
-                        <div className="text-xs space-y-1 min-w-[200px]">
-                          <div className="font-bold text-slate-900">{unit.name}</div>
-                          <div className="text-slate-500">{unit.address}</div>
-                          <div className="pt-1 border-t border-slate-200 font-mono tabular-nums text-slate-700">
-                            Koordinat: {unit.latitude.toFixed(4)}, {unit.longitude.toFixed(4)}
+                      <Marker
+                        position={[unit.latitude, unit.longitude]}
+                        icon={createUnitMarkerIcon(
+                          unit,
+                          totalAllStaffCount,
+                          isMostActive,
+                          isSelected,
+                          isHovered
+                        )}
+                        zIndexOffset={isHovered ? 1000 : isMostActive ? 400 : 200}
+                        eventHandlers={{
+                          click: (e) => {
+                            setFocusedTarget({
+                              coords: [unit.latitude, unit.longitude],
+                              zoom: 15,
+                              triggerId: Date.now(),
+                            });
+                            if (e.target && e.target._map) {
+                              e.target._map.flyTo([unit.latitude, unit.longitude], 15, {
+                                animate: true,
+                                duration: 0.9,
+                              });
+                            }
+                          },
+                          mouseover: () => setHoveredMarkerId(`unit-${unit.unitId}`),
+                          mouseout: () =>
+                            setHoveredMarkerId((prev) =>
+                              prev === `unit-${unit.unitId}` ? null : prev
+                            ),
+                        }}
+                      >
+                        <Tooltip
+                          direction="top"
+                          offset={[0, -18]}
+                          opacity={1}
+                          className="ips-hover-tooltip"
+                        >
+                          <div className="space-y-0.5">
+                            <div className="font-semibold text-white">{unit.name}</div>
+                            <div className="font-mono tabular-nums text-[11px] text-emerald-300">
+                              Aktivitas Saat Ini: {totalAllStaffCount} Staf Bertugas
+                            </div>
                           </div>
-                          <div className="font-mono tabular-nums font-semibold text-emerald-700">
-                            Marker Tampil: {totalCount} Staf ({onTime} hadir, {late} terlambat,{' '}
-                            {izinCount} izin)
+                        </Tooltip>
+                        <Popup minWidth={250} maxWidth={300}>
+                          <div className="text-xs space-y-2 py-0.5">
+                            <div className="border-b border-slate-200 pb-1.5">
+                              <div className="font-mono tabular-nums text-[11px] text-slate-500">
+                                {unit.code} · {unit.region}
+                              </div>
+                              <div className="font-bold text-sm text-slate-900">{unit.name}</div>
+                              <div className="text-slate-500 mt-0.5">{unit.address}</div>
+                            </div>
+
+                            <div className="bg-slate-900 text-white rounded-md px-3 py-2 flex items-center justify-between">
+                              <span>Total Staf Bertugas Saat Ini</span>
+                              <span className="font-mono tabular-nums font-bold text-sm text-emerald-400">
+                                {totalAllStaffCount} Staf
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-1.5 text-center font-mono tabular-nums">
+                              <div className="bg-emerald-50 border border-emerald-200 rounded p-1.5">
+                                <div className="text-[10px] font-sans text-emerald-800">Hadir</div>
+                                <div className="font-bold text-emerald-900">{onTime}</div>
+                              </div>
+                              <div className="bg-amber-50 border border-amber-200 rounded p-1.5">
+                                <div className="text-[10px] font-sans text-amber-800">Terlambat</div>
+                                <div className="font-bold text-amber-900">{late}</div>
+                              </div>
+                              <div className="bg-blue-50 border border-blue-200 rounded p-1.5">
+                                <div className="text-[10px] font-sans text-blue-800">Izin/Sakit</div>
+                                <div className="font-bold text-blue-900">{izinCount}</div>
+                              </div>
+                            </div>
+
+                            {staffList.length > 0 && (
+                              <div className="border-t border-slate-200 pt-1.5 space-y-1">
+                                <div className="font-semibold text-slate-700">
+                                  Daftar Staf di Unit Ini ({totalCount} terfilter):
+                                </div>
+                                <div className="max-h-24 overflow-y-auto space-y-1 pr-1">
+                                  {staffList.map(({ log, nearestDistanceMeters }) => (
+                                    <div
+                                      key={log.logId}
+                                      className="flex items-center justify-between text-[11px] text-slate-700 bg-slate-50 px-2 py-1 rounded"
+                                    >
+                                      <span className="font-medium truncate max-w-[135px]">
+                                        {log.userName}
+                                      </span>
+                                      <span className="font-mono tabular-nums text-slate-500">
+                                        {log.checkInTime.slice(0, 5)} · {nearestDistanceMeters}m
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            <div className="pt-1 border-t border-slate-200 flex items-center justify-between text-[11px]">
+                              <span className="font-mono tabular-nums text-slate-500">
+                                Radius: ≤ {officeConfig.radiusMeters}m
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleSelectUnitFilter(unit.unitId)}
+                                className="font-semibold text-slate-900 underline hover:text-emerald-700"
+                              >
+                                Fokus ke Unit Ini
+                              </button>
+                            </div>
                           </div>
-                          <div className="text-slate-500">
-                            Radius Geofence Sah: ≤ {officeConfig.radiusMeters} meter
-                          </div>
-                        </div>
-                      </Popup>
-                    </Marker>
-                  </React.Fragment>
-                );
-              })}
+                        </Popup>
+                      </Marker>
+                    </React.Fragment>
+                  );
+                }
+              )}
 
               {/* Render Filtered Employee Markers */}
               {visibleLogs.map(({ log, nearestUnit, nearestDistanceMeters, isInsideUnit }) => {
                 const isSelected = activeItem?.log.logId === log.logId;
+                const isHovered = hoveredMarkerId === `emp-${log.logId}`;
+                const unitSummary = unitStats.find((u) => u.unit.unitId === nearestUnit.unitId);
+                const unitStaffTotal = unitSummary ? unitSummary.totalAllStaffCount : 1;
+
                 return (
                   <Marker
                     key={log.logId}
@@ -507,23 +645,73 @@ export const GeospatialRadarMap: React.FC<GeospatialRadarMapProps> = ({
                       log.userName,
                       isInsideUnit,
                       log.status,
-                      isSelected
+                      isSelected,
+                      isHovered
                     )}
+                    zIndexOffset={isHovered ? 950 : isSelected ? 500 : 100}
                     eventHandlers={{
-                      click: () => handleFocusEmployee(log.logId, log.latitude, log.longitude),
+                      click: (e) => {
+                        setSelectedLogId(log.logId);
+                        setFocusedTarget({
+                          coords: [log.latitude, log.longitude],
+                          zoom: 16,
+                          triggerId: Date.now(),
+                        });
+                        if (e.target && e.target._map) {
+                          e.target._map.flyTo([log.latitude, log.longitude], 16, {
+                            animate: true,
+                            duration: 0.9,
+                          });
+                        }
+                      },
+                      mouseover: () => setHoveredMarkerId(`emp-${log.logId}`),
+                      mouseout: () =>
+                        setHoveredMarkerId((prev) =>
+                          prev === `emp-${log.logId}` ? null : prev
+                        ),
                     }}
                   >
-                    <Popup>
-                      <div className="text-xs space-y-1 min-w-[190px]">
-                        <div className="font-bold text-slate-900">{log.userName}</div>
-                        <div className="text-slate-600">
-                          {log.department} · {log.position}
+                    <Tooltip
+                      direction="top"
+                      offset={[0, -26]}
+                      opacity={1}
+                      className="ips-hover-tooltip"
+                    >
+                      <div className="space-y-0.5">
+                        <div className="font-semibold text-white">
+                          {nearestUnit.name} ({log.userName})
                         </div>
-                        <div className="pt-1 border-t border-slate-200 font-mono tabular-nums">
-                          Unit: <strong>{nearestUnit.code}</strong> ({nearestDistanceMeters}m)
+                        <div className="font-mono tabular-nums text-[11px] text-emerald-300">
+                          Aktivitas Unit: {unitStaffTotal} Staf Bertugas · {nearestDistanceMeters}m
                         </div>
-                        <div className="font-mono tabular-nums">
-                          Status: {STATUS_NAMES[log.status] || log.status} · Masuk: {log.checkInTime}
+                      </div>
+                    </Tooltip>
+                    <Popup minWidth={230}>
+                      <div className="text-xs space-y-1.5 py-0.5">
+                        <div className="border-b border-slate-200 pb-1.5">
+                          <div className="font-bold text-sm text-slate-900">{log.userName}</div>
+                          <div className="text-slate-600">
+                            {log.department} · {log.position}
+                          </div>
+                        </div>
+
+                        <div className="bg-slate-50 border border-slate-200 rounded p-2 space-y-1">
+                          <div className="font-semibold text-slate-900">
+                            Unit: {nearestUnit.name}
+                          </div>
+                          <div className="font-mono tabular-nums text-slate-700">
+                            Total Staf Bertugas di {nearestUnit.code}:{' '}
+                            <strong>{unitStaffTotal} Staf</strong>
+                          </div>
+                          <div className="font-mono tabular-nums text-slate-600">
+                            Jarak Staf ke Unit: {nearestDistanceMeters}m (Maks{' '}
+                            {officeConfig.radiusMeters}m)
+                          </div>
+                        </div>
+
+                        <div className="font-mono tabular-nums text-slate-700">
+                          Status: <strong>{STATUS_NAMES[log.status] || log.status}</strong> · Masuk:{' '}
+                          {log.checkInTime}
                         </div>
                         <div
                           className={`font-semibold ${

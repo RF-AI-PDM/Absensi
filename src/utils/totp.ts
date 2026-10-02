@@ -84,8 +84,8 @@ export function getRemainingTotpSeconds(stepSeconds = 30): number {
   return stepSeconds - elapsed;
 }
 
-export function buildOtpAuthUri(secret: string, email: string, issuer = 'HadirPro'): string {
-  const safeEmail = encodeURIComponent(email || 'user@hadirpro.id');
+export function buildOtpAuthUri(secret: string, email: string, issuer = 'HADIROT'): string {
+  const safeEmail = encodeURIComponent(email || 'user@hadirot.id');
   const safeIssuer = encodeURIComponent(issuer);
   return `otpauth://totp/${safeIssuer}:${safeEmail}?secret=${secret}&issuer=${safeIssuer}&algorithm=SHA1&digits=6&period=30`;
 }
