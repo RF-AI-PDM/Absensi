@@ -286,10 +286,12 @@ service cloud.firestore {
         incoming().createdAt == existing().createdAt &&
         incoming().updatedAt == request.time &&
         (existing().status != 'selesai_shift' || isAdmin()) && (
-          // Action 1: Employee Check-Out or Notes Update
+          // Action 1: Employee Check-In Unit Transfer, Check-Out, or Notes Update
           (request.auth.uid == existing().userId &&
            incoming().diff(existing()).affectedKeys().hasOnly([
-             'recordedByUid', 'checkOutTime', 'workDurationMinutes', 'status', 'notes', 'updatedAt'
+             'recordedByUid', 'checkInTime', 'checkOutTime', 'latitude', 'longitude',
+             'accuracyMeters', 'distanceMeters', 'isWithinGeofence', 'locationLabel',
+             'status', 'lateMinutes', 'workDurationMinutes', 'notes', 'updatedAt'
            ])) ||
           // Action 2: Admin Correction
           (isAdmin() &&

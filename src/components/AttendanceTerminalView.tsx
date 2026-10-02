@@ -337,152 +337,174 @@ export const AttendanceTerminalView: React.FC<AttendanceTerminalViewProps> = ({
             </div>
           </div>
 
-          {!todayLog ? (
-            <form onSubmit={handleCheckInSubmit} className="space-y-4 pt-3 border-t border-slate-200">
+          {/* Status Absen Masuk & Absen Keluar Hari Ini */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-200 text-xs">
+            <div
+              className={`p-3.5 rounded-lg border flex items-center justify-between ${
+                todayLog
+                  ? 'bg-emerald-50/80 border-emerald-200 text-emerald-950'
+                  : 'bg-slate-50 border-slate-200 text-slate-600'
+              }`}
+            >
               <div>
-                <span className="block text-xs font-medium text-slate-700 mb-1.5">
-                  Pilih Jenis Kehadiran Hari Ini
-                </span>
-                <div className="flex flex-wrap gap-1.5 p-1 bg-slate-100 rounded-lg w-fit">
-                  {(
-                    [
-                      { id: 'hadir', label: 'Hadir di Unit Kerja' },
-                      { id: 'lembur', label: 'Shift Lembur Unit' },
-                      { id: 'izin', label: 'Izin Resmi' },
-                      { id: 'sakit', label: 'Sakit' },
-                    ] as const
-                  ).map((tab) => (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      onClick={() => setSelectedMode(tab.id)}
-                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap ${
-                        selectedMode === tab.id
-                          ? 'bg-white text-slate-900 shadow-sm'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      {tab.label}
-                    </button>
-                  ))}
+                <div className="text-[11px] font-medium text-slate-500">Status Absen Masuk</div>
+                <div className="font-semibold text-sm mt-0.5">
+                  {todayLog ? `Masuk Pukul ${todayLog.checkInTime}` : 'Belum Absen Masuk'}
                 </div>
-              </div>
-
-              {isBlockedByAntiFraud && (
-                <div className="p-3.5 bg-red-50 border border-red-300 rounded-lg text-xs text-red-900 flex items-start gap-2.5">
-                  <ShieldAlert className="w-4 h-4 text-red-700 shrink-0 mt-0.5" />
-                  <div>
-                    <div className="font-semibold">
-                      Lokasi di Luar Radius 4 Unit Pembangkit — Tombol Absen Hadir Dikunci!
-                    </div>
-                    <p className="mt-0.5 text-red-800">
-                      Posisi Anda berjarak <strong>{nearestDistanceMeters} meter</strong> dari{' '}
-                      <strong>{nearestUnit.name}</strong> (batas maksimal{' '}
-                      <strong>{officeConfig.radiusMeters} meter</strong>). Karyawan tidak dapat
-                      melakukan absen hadir dari luar wilayah PLTU Jeranjang, PLTD Ampenan, PLTD
-                      Pringgabaya, atau PLTU Taliwang.
-                    </p>
+                {todayLog && (
+                  <div className="font-mono tabular-nums text-[11px] text-emerald-800 mt-0.5">
+                    {todayLog.locationLabel} ({todayLog.distanceMeters}m)
                   </div>
-                </div>
-              )}
+                )}
+              </div>
+              <CheckCircle2
+                className={`w-5 h-5 shrink-0 ${
+                  todayLog ? 'text-emerald-600' : 'text-slate-300'
+                }`}
+              />
+            </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">
-                    Unit Pembangkit Terdeteksi Otomatis
-                  </label>
-                  <input
-                    type="text"
-                    readOnly
-                    value={
-                      isWithinAnyUnit
-                        ? `${nearestUnit.name} (${nearestDistanceMeters}m)`
-                        : `Di Luar Zona (${nearestDistanceMeters}m dari ${nearestUnit.code})`
-                    }
-                    className="w-full px-3 py-2 text-xs border border-slate-200 bg-slate-100 text-slate-700 rounded-lg font-medium"
-                  />
+            <div
+              className={`p-3.5 rounded-lg border flex items-center justify-between ${
+                todayLog?.checkOutTime
+                  ? 'bg-blue-50/80 border-blue-200 text-blue-950'
+                  : 'bg-slate-50 border-slate-200 text-slate-600'
+              }`}
+            >
+              <div>
+                <div className="text-[11px] font-medium text-slate-500">Status Absen Keluar</div>
+                <div className="font-semibold text-sm mt-0.5">
+                  {todayLog?.checkOutTime
+                    ? `Keluar Pukul ${todayLog.checkOutTime}`
+                    : 'Belum Absen Keluar'}
                 </div>
+                {todayLog?.checkOutTime && (
+                  <div className="font-mono tabular-nums text-[11px] text-blue-800 mt-0.5">
+                    Durasi Kerja: {formatDurationHoursMinutes(todayLog.workDurationMinutes)}
+                  </div>
+                )}
+              </div>
+              <LogOut
+                className={`w-5 h-5 shrink-0 ${
+                  todayLog?.checkOutTime ? 'text-blue-600' : 'text-slate-300'
+                }`}
+              />
+            </div>
+          </div>
+
+          <form onSubmit={handleCheckInSubmit} className="space-y-4 pt-3 border-t border-slate-200">
+            <div>
+              <span className="block text-xs font-medium text-slate-700 mb-1.5">
+                Pilih Jenis Kehadiran Hari Ini
+              </span>
+              <div className="flex flex-wrap gap-1.5 p-1 bg-slate-100 rounded-lg w-fit">
+                {(
+                  [
+                    { id: 'hadir', label: 'Hadir di Unit Kerja' },
+                    { id: 'lembur', label: 'Shift Lembur Unit' },
+                    { id: 'izin', label: 'Izin Resmi' },
+                    { id: 'sakit', label: 'Sakit' },
+                  ] as const
+                ).map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setSelectedMode(tab.id)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap ${
+                      selectedMode === tab.id
+                        ? 'bg-white text-slate-900 shadow-sm'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {isBlockedByAntiFraud && (
+              <div className="p-3.5 bg-red-50 border border-red-300 rounded-lg text-xs text-red-900 flex items-start gap-2.5">
+                <ShieldAlert className="w-4 h-4 text-red-700 shrink-0 mt-0.5" />
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">
-                    Catatan Pekerjaan / Unit Penugasan
-                  </label>
-                  <input
-                    type="text"
-                    maxLength={300}
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Contoh: Pemeliharaan turbin / inspeksi panel unit"
-                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg"
-                  />
+                  <div className="font-semibold">
+                    Lokasi di Luar Radius 4 Unit Pembangkit — Tombol Absen Masuk Dikunci!
+                  </div>
+                  <p className="mt-0.5 text-red-800">
+                    Posisi Anda berjarak <strong>{nearestDistanceMeters} meter</strong> dari{' '}
+                    <strong>{nearestUnit.name}</strong> (batas maksimal{' '}
+                    <strong>{officeConfig.radiusMeters} meter</strong>). Karyawan tidak dapat
+                    melakukan absen hadir dari luar wilayah PLTU Jeranjang, PLTD Ampenan, PLTD
+                    Pringgabaya, atau PLTU Taliwang.
+                  </p>
                 </div>
               </div>
+            )}
 
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">
+                  Unit Pembangkit Terdeteksi Otomatis
+                </label>
+                <input
+                  type="text"
+                  readOnly
+                  value={
+                    isWithinAnyUnit
+                      ? `${nearestUnit.name} (${nearestDistanceMeters}m)`
+                      : `Di Luar Zona (${nearestDistanceMeters}m dari ${nearestUnit.code})`
+                  }
+                  className="w-full px-3 py-2 text-xs border border-slate-200 bg-slate-100 text-slate-700 rounded-lg font-medium"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">
+                  Catatan Pekerjaan / Laporan Penyelesaian Shift
+                </label>
+                <input
+                  type="text"
+                  maxLength={300}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Contoh: Pemeliharaan turbin / inspeksi panel unit"
+                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg"
+                />
+              </div>
+            </div>
+
+            {/* Dua Tombol Utama: Absen Masuk & Absen Keluar */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
               <button
                 type="submit"
                 disabled={submitting || isBlockedByAntiFraud}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-2.5 text-xs font-semibold text-white bg-slate-900 rounded-lg hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="w-full inline-flex items-center justify-center gap-2 px-5 py-3 text-xs font-semibold text-white bg-emerald-700 rounded-lg hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 <MapPin className="w-4 h-4" />
                 {submitting
-                  ? 'Merekam Kehadiran...'
+                  ? 'Memproses Absen...'
                   : isBlockedByAntiFraud
-                  ? 'Absen Dikunci (Di Luar Radius 4 Unit)'
-                  : `Check-In di ${nearestUnit.name}`}
+                  ? 'Absen Masuk Dikunci (Luar Radius)'
+                  : todayLog
+                  ? `Absen Masuk Ulang / Pindah Unit (${nearestUnit.code})`
+                  : `Absen Masuk (Check-In) — ${nearestUnit.code}`}
               </button>
-            </form>
-          ) : (
-            <div className="space-y-4 pt-2 border-t border-slate-200">
-              <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg text-xs space-y-1">
-                <div className="font-semibold text-emerald-900 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Anda Sudah Check-In Hari Ini ({todayLog.dateStr})</span>
-                </div>
-                <p className="text-emerald-800 font-mono tabular-nums">
-                  Unit: {todayLog.locationLabel} · Masuk: {todayLog.checkInTime} · Jarak:{' '}
-                  {todayLog.distanceMeters}m
-                </p>
-              </div>
 
-              {todayLog.status !== 'selesai_shift' ? (
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">
-                      Laporan Penyelesaian Tugas Sebelum Check-Out
-                    </label>
-                    <input
-                      type="text"
-                      maxLength={300}
-                      value={notes}
-                      onChange={(e) => setNotes(e.target.value)}
-                      placeholder="Ringkasan hasil pemeliharaan / operasional hari ini..."
-                      className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    disabled={submitting}
-                    onClick={handleCheckOutSubmit}
-                    className="inline-flex items-center gap-2 px-5 py-2.5 text-xs font-semibold text-white bg-emerald-700 rounded-lg hover:bg-emerald-600 disabled:opacity-50 transition-colors"
-                  >
-                    <LogOut className="w-4 h-4" />
-                    {submitting ? 'Memproses Check-Out...' : 'Check-Out & Selesaikan Shift Kerja'}
-                  </button>
-                </div>
-              ) : (
-                <p className="text-xs font-medium text-slate-600">
-                  Shift hari ini telah diselesaikan pada pukul{' '}
-                  <span className="font-mono tabular-nums font-semibold text-slate-900">
-                    {todayLog.checkOutTime}
-                  </span>{' '}
-                  dengan total durasi kerja{' '}
-                  <span className="font-mono tabular-nums font-semibold text-slate-900">
-                    {formatDurationHoursMinutes(todayLog.workDurationMinutes)}
-                  </span>
-                  .
-                </p>
-              )}
+              <button
+                type="button"
+                disabled={submitting || !todayLog}
+                onClick={handleCheckOutSubmit}
+                className="w-full inline-flex items-center justify-center gap-2 px-5 py-3 text-xs font-semibold text-white bg-slate-900 rounded-lg hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <LogOut className="w-4 h-4" />
+                {submitting
+                  ? 'Memproses Check-Out...'
+                  : !todayLog
+                  ? 'Absen Keluar (Wajib Absen Masuk Dulu)'
+                  : todayLog.checkOutTime
+                  ? `Perbarui Absen Keluar (${todayLog.checkOutTime.slice(0, 5)})`
+                  : 'Absen Keluar (Check-Out Selesai Shift)'}
+              </button>
             </div>
-          )}
+          </form>
 
           {feedback && (
             <div

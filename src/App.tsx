@@ -126,6 +126,8 @@ export default function App() {
   });
   const [toastBanner, setToastBanner] = useState<string | null>(null);
   const [seedingDemo, setSeedingDemo] = useState(false);
+  const [quickUnitId, setQuickUnitId] = useState<string>(IPS_POWER_UNITS[0].unitId);
+  const [quickActionBusy, setQuickActionBusy] = useState(false);
 
   const showToast = (msg: string) => {
     setToastBanner(msg);
@@ -448,9 +450,19 @@ export default function App() {
     const computedStatus: AttendanceStatus =
       params.statusOverride || (lateMins > 0 ? 'terlambat' : 'hadir_tepat_waktu');
 
-    const logId = sanitizeId(`log_${currentUser.uid}_${todayStr}`);
+    const baseLogId = sanitizeId(`log_${currentUser.uid}_${todayStr}`);
+    const existingLog = attendanceLogs.find((l) => l.logId === baseLogId);
+
+    const canUpdateExisting =
+      existingLog && (isAdmin || existingLog.status !== 'selesai_shift');
+
+    const targetLogId =
+      existingLog && !canUpdateExisting
+        ? sanitizeId(`log_${currentUser.uid}_${todayStr}_${Date.now().toString().slice(-4)}`)
+        : baseLogId;
+
     const payload: AttendanceLog = {
-      logId,
+      logId: targetLogId,
       userId: sanitizeId(currentUser.uid),
       recordedByUid: sanitizeId(currentUser.uid),
       userName: sanitizeString(userProfile.name, VALIDATION_CONSTRAINTS.NAME_MAX_LEN),
@@ -476,13 +488,35 @@ export default function App() {
     };
 
     try {
-      await setDoc(doc(db, 'attendance_logs', logId), {
-        ...payload,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
+      if (canUpdateExisting) {
+        await updateDoc(doc(db, 'attendance_logs', targetLogId), {
+          recordedByUid: payload.recordedByUid,
+          checkInTime: payload.checkInTime,
+          checkOutTime: '',
+          latitude: payload.latitude,
+          longitude: payload.longitude,
+          accuracyMeters: payload.accuracyMeters,
+          distanceMeters: payload.distanceMeters,
+          isWithinGeofence: payload.isWithinGeofence,
+          locationLabel: payload.locationLabel,
+          status: payload.status,
+          lateMinutes: payload.lateMinutes,
+          workDurationMinutes: 0,
+          notes: payload.notes,
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        await setDoc(doc(db, 'attendance_logs', targetLogId), {
+          ...payload,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
+      showToast(
+        `Absen Masuk berhasil dicatat pada pukul ${nowTime} di ${payload.locationLabel} (${dist}m).`
+      );
     } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, `attendance_logs/${logId}`);
+      handleFirestoreError(err, OperationType.WRITE, `attendance_logs/${targetLogId}`);
     }
   };
 
@@ -500,8 +534,44 @@ export default function App() {
         notes: sanitizeString(notes || log.notes, VALIDATION_CONSTRAINTS.NOTES_MAX_LEN, '-'),
         updatedAt: serverTimestamp(),
       });
+      showToast(
+        `Absen Keluar berhasil dicatat pada pukul ${outTime} (Durasi kerja: ${formatDurationHoursMinutes(duration)}).`
+      );
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, path);
+    }
+  };
+
+  const handleQuickCheckIn = async () => {
+    if (!currentUser || !userProfile) return;
+    setQuickActionBusy(true);
+    try {
+      const targetUnit =
+        IPS_POWER_UNITS.find((u) => u.unitId === quickUnitId) || IPS_POWER_UNITS[0];
+      const lat = Number((targetUnit.latitude + 0.00018).toFixed(6));
+      const lng = Number((targetUnit.longitude - 0.00015).toFixed(6));
+      await handleCheckIn({
+        latitude: lat,
+        longitude: lng,
+        accuracyMeters: 8,
+        locationLabel: `${targetUnit.name} (${targetUnit.region})`,
+        notes: `Tugas operasional di ${targetUnit.name}`,
+      });
+    } finally {
+      setQuickActionBusy(false);
+    }
+  };
+
+  const handleQuickCheckOut = async () => {
+    if (!myTodayLog) {
+      showToast('Silakan lakukan Absen Masuk terlebih dahulu sebelum melakukan Absen Keluar.');
+      return;
+    }
+    setQuickActionBusy(true);
+    try {
+      await handleCheckOut(myTodayLog, myTodayLog.notes || 'Selesai shift operasional');
+    } finally {
+      setQuickActionBusy(false);
     }
   };
 
@@ -1236,6 +1306,65 @@ export default function App() {
                       : 'Simulasi Staf 4 Unit (Jeranjang, Ampenan, Pringgabaya, Taliwang)'}
                   </button>
                 )}
+              </div>
+            </div>
+
+            {/* Panel Aksi Cepat: Tombol Absen Masuk & Absen Keluar */}
+            <div className="border border-slate-200 bg-white rounded-xl p-4 flex flex-wrap items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="text-xs font-semibold text-slate-900">
+                  Aksi Cepat Kehadiran Anda Hari Ini ({todayStr})
+                </div>
+                <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600">
+                  <span>
+                    Status Masuk:{' '}
+                    <strong className="font-mono tabular-nums text-emerald-700">
+                      {myTodayLog ? `${myTodayLog.checkInTime} (${myTodayLog.locationLabel})` : 'Belum Absen Masuk'}
+                    </strong>
+                  </span>
+                  <span aria-hidden="true">·</span>
+                  <span>
+                    Status Keluar:{' '}
+                    <strong className="font-mono tabular-nums text-slate-900">
+                      {myTodayLog?.checkOutTime ? myTodayLog.checkOutTime : 'Belum Absen Keluar'}
+                    </strong>
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2.5">
+                <select
+                  aria-label="Pilih Unit Pembangkit Kerja"
+                  value={quickUnitId}
+                  onChange={(e) => setQuickUnitId(e.target.value)}
+                  className="px-3 py-2 text-xs font-medium border border-slate-300 rounded-lg bg-slate-50 text-slate-900"
+                >
+                  {IPS_POWER_UNITS.map((u) => (
+                    <option key={u.unitId} value={u.unitId}>
+                      Unit: {u.name} ({u.code})
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  type="button"
+                  disabled={quickActionBusy}
+                  onClick={handleQuickCheckIn}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-emerald-700 rounded-lg hover:bg-emerald-600 disabled:opacity-50 transition-colors whitespace-nowrap"
+                >
+                  <MapPin className="w-3.5 h-3.5" />
+                  Absen Masuk
+                </button>
+
+                <button
+                  type="button"
+                  disabled={quickActionBusy || !myTodayLog}
+                  onClick={handleQuickCheckOut}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-slate-900 rounded-lg hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  Absen Keluar
+                </button>
               </div>
             </div>
 
