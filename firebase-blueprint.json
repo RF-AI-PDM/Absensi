@@ -344,6 +344,11 @@
           "maxLength": 300,
           "description": "Catatan tugas atau keterangan kehadiran"
         },
+        "faceVerificationUrl": {
+          "type": "string",
+          "maxLength": 2000,
+          "description": "URL atau storage path snapshot verifikasi wajah terenkripsi karyawan saat absen"
+        },
         "createdAt": {
           "type": "string",
           "format": "date-time",

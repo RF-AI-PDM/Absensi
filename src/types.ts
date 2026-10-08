@@ -18,6 +18,7 @@ export const VALIDATION_CONSTRAINTS = {
   LOCATION_LABEL_MAX_LEN: 180,
   NOTES_MAX_LEN: 300,
   MESSAGE_MAX_LEN: 300,
+  FACE_URL_MAX_LEN: 2000,
 } as const;
 
 export function sanitizeString(input: string, maxLength: number, fallback = '-'): string {
@@ -94,6 +95,7 @@ export interface AttendanceLog {
   lateMinutes: number;
   workDurationMinutes: number;
   notes: string;
+  faceVerificationUrl?: string;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
 }

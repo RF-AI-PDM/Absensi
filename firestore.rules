@@ -115,7 +115,7 @@ service cloud.firestore {
         'logId', 'userId', 'recordedByUid', 'userName', 'department', 'position',
         'dateStr', 'monthStr', 'checkInTime', 'checkOutTime', 'latitude', 'longitude',
         'accuracyMeters', 'distanceMeters', 'isWithinGeofence', 'locationLabel',
-        'status', 'lateMinutes', 'workDurationMinutes', 'notes', 'createdAt', 'updatedAt'
+        'status', 'lateMinutes', 'workDurationMinutes', 'notes', 'faceVerificationUrl', 'createdAt', 'updatedAt'
       ]) &&
       data.logId is string && data.logId.size() >= 1 && data.logId.size() <= 128 && data.logId.matches('^[a-zA-Z0-9_\\-]+$') &&
       data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 && data.userId.matches('^[a-zA-Z0-9_\\-]+$') &&
@@ -138,6 +138,7 @@ service cloud.firestore {
       data.lateMinutes is number && data.lateMinutes >= 0 && data.lateMinutes <= 1440 &&
       data.workDurationMinutes is number && data.workDurationMinutes >= 0 && data.workDurationMinutes <= 1440 &&
       data.notes is string && data.notes.size() <= 300 &&
+      (!('faceVerificationUrl' in data) || (data.faceVerificationUrl is string && data.faceVerificationUrl.size() <= 2000)) &&
       data.createdAt is timestamp &&
       data.updatedAt is timestamp;
     }
@@ -333,14 +334,14 @@ service cloud.firestore {
            incoming().diff(existing()).affectedKeys().hasOnly([
              'recordedByUid', 'checkInTime', 'checkOutTime', 'latitude', 'longitude',
              'accuracyMeters', 'distanceMeters', 'isWithinGeofence', 'locationLabel',
-             'status', 'lateMinutes', 'workDurationMinutes', 'notes', 'updatedAt'
+             'status', 'lateMinutes', 'workDurationMinutes', 'notes', 'faceVerificationUrl', 'updatedAt'
            ])) ||
           // Action 2: Admin Correction
           (isAdmin() &&
            incoming().diff(existing()).affectedKeys().hasOnly([
              'recordedByUid', 'checkInTime', 'checkOutTime', 'latitude', 'longitude',
              'accuracyMeters', 'distanceMeters', 'isWithinGeofence', 'locationLabel',
-             'status', 'lateMinutes', 'workDurationMinutes', 'notes', 'updatedAt'
+             'status', 'lateMinutes', 'workDurationMinutes', 'notes', 'faceVerificationUrl', 'updatedAt'
            ]))
         );
       allow delete: if isSignedIn() && isValidId(logId) && isAdmin();

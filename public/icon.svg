@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="50%" stop-color="#1e293b" />
+      <stop offset="100%" stop-color="#0284c7" />
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="50%" stop-color="#34d399" />
+      <stop offset="100%" stop-color="#059669" />
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="12" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Background rounded squircle (Android App Icon) -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)" />
+  
+  <!-- Outer Radar Pulse Rings -->
+  <circle cx="256" cy="256" r="180" fill="none" stroke="#38bdf8" stroke-width="3" stroke-dasharray="8 8" opacity="0.4" />
+  <circle cx="256" cy="256" r="130" fill="none" stroke="#34d399" stroke-width="4" opacity="0.6" />
+  <circle cx="256" cy="256" r="75" fill="#0f172a" stroke="#0284c7" stroke-width="6" opacity="0.8" />
+
+  <!-- Geofence GPS Pin + Lightning Bolt (HADIROT PLN IP) -->
+  <g filter="url(#glow)">
+    <!-- Pin Head -->
+    <path d="M256 100 C185 100 130 155 130 226 C130 305 235 410 256 426 C277 410 382 305 382 226 C382 155 327 100 256 100 Z" fill="url(#accentGrad)" />
+    
+    <!-- Inner Dark Pin Center -->
+    <circle cx="256" cy="226" r="58" fill="#0f172a" />
+    
+    <!-- Central Energy Lightning Bolt -->
+    <path d="M264 180 L234 232 L260 232 L248 274 L282 220 L256 220 Z" fill="#38bdf8" />
+  </g>
+
+  <!-- Small GPS Live Signal Dot -->
+  <circle cx="256" cy="256" r="10" fill="#34d399" />
+</svg>

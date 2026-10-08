@@ -352,6 +352,39 @@ export function getTodayDateStr(): string {
   return `${y}-${m}-${d}`;
 }
 
+export function getNDaysAgoDateStr(days: number, fromDate?: string): string {
+  const base = fromDate ? new Date(fromDate + 'T12:00:00') : new Date();
+  base.setDate(base.getDate() - days);
+  const y = base.getFullYear();
+  const m = String(base.getMonth() + 1).padStart(2, '0');
+  const d = String(base.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+export function getFirstDayOfMonthDateStr(monthStr?: string): string {
+  if (monthStr && monthStr.includes('-')) {
+    return `${monthStr}-01`;
+  }
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  return `${y}-${m}-01`;
+}
+
+export function formatIndonesianDate(dateStr: string): string {
+  if (!dateStr || !dateStr.includes('-')) return dateStr;
+  const parts = dateStr.split('-');
+  if (parts.length !== 3) return dateStr;
+  const [y, m, d] = parts;
+  const monthNames = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+    'Jul', 'Agt', 'Sep', 'Okt', 'Nov', 'Des',
+  ];
+  const monthIndex = parseInt(m, 10) - 1;
+  const monthName = monthNames[monthIndex] || m;
+  return `${d} ${monthName} ${y}`;
+}
+
 export function getCurrentMonthStr(): string {
   const now = new Date();
   const y = now.getFullYear();

@@ -3,10 +3,14 @@ import {
   MapPin,
   Clock,
   Bell,
+  Camera,
   CheckCircle2,
+  Eye,
   LocateFixed,
   LogOut,
   ShieldAlert,
+  ShieldCheck,
+  Sparkles,
   Zap,
 } from 'lucide-react';
 import {
@@ -26,6 +30,9 @@ import {
   PowerPlantUnit,
 } from '../utils/geo';
 import { ShiftSwapManager } from './ShiftSwapManager';
+import { FaceCameraView } from './FaceCameraView';
+import { FaceVerificationDetailModal } from './FaceVerificationDetailModal';
+import { uploadFaceVerificationSnapshot } from '../utils/faceVerification';
 
 interface AttendanceTerminalViewProps {
   profile: UserProfile;
@@ -39,6 +46,7 @@ interface AttendanceTerminalViewProps {
     locationLabel: string;
     statusOverride?: AttendanceStatus;
     notes: string;
+    faceVerificationUrl?: string;
   }) => Promise<void>;
   onCheckOut: (log: AttendanceLog, notes: string) => Promise<void>;
   onAcknowledgeReminder: (reminder: AttendanceReminder) => Promise<void>;
@@ -147,6 +155,12 @@ export const AttendanceTerminalView: React.FC<AttendanceTerminalViewProps> = ({
     null
   );
 
+  // Face Verification State
+  const [faceSnapshot, setFaceSnapshot] = useState<string | null>(null);
+  const [showCameraView, setShowCameraView] = useState<boolean>(false);
+  const [inspectingModalLog, setInspectingModalLog] = useState<AttendanceLog | null>(null);
+  const [uploadingFace, setUploadingFace] = useState<boolean>(false);
+
   const multiUnitEval = evaluateMultiUnitGeofence(
     coords.lat,
     coords.lng,
@@ -201,11 +215,53 @@ export const AttendanceTerminalView: React.FC<AttendanceTerminalViewProps> = ({
       return;
     }
 
+    if ((selectedMode === 'izin' || selectedMode === 'sakit') && !notes.trim()) {
+      setFeedback({
+        type: 'error',
+        text: `Mohon cantumkan teks alasan atau keterangan ${
+          selectedMode === 'sakit' ? 'sakit & rujukan surat dokter' : 'keperluan izin resmi'
+        } sebelum mengirim absensi.`,
+      });
+      return;
+    }
+
+    // Biometric face verification requirement for physical attendance
+    if (requiresPhysicalPresence && !faceSnapshot && !todayLog?.faceVerificationUrl) {
+      setShowCameraView(true);
+      setFeedback({
+        type: 'error',
+        text: 'Verifikasi wajah wajib dilakukan untuk absensi Hadir & Lembur. Silakan ambil foto wajah Anda pada bingkai kamera di bawah.',
+      });
+      return;
+    }
+
     setSubmitting(true);
     try {
       const resolvedLocationLabel = isWithinAnyUnit
         ? `${nearestUnit.name} (${nearestUnit.region})`
-        : `Izin/Sakit di Luar Unit (Terdekat: ${nearestUnit.code})`;
+        : selectedMode === 'sakit'
+        ? `Laporan Sakit Mandiri (Terdekat: ${nearestUnit.code})`
+        : selectedMode === 'izin'
+        ? `Izin Resmi Tercatat (Terdekat: ${nearestUnit.code})`
+        : `Luar Unit Resmi (Terdekat: ${nearestUnit.code})`;
+
+      let finalFaceUrl: string | undefined = todayLog?.faceVerificationUrl;
+
+      // Upload snapshot to Firebase Storage with AES-256 client-side packaging
+      if (faceSnapshot) {
+        setUploadingFace(true);
+        const uploadResult = await uploadFaceVerificationSnapshot({
+          imageDataUrl: faceSnapshot,
+          userId: profile.uid,
+          userName: profile.name,
+          locationLabel: resolvedLocationLabel,
+          latitude: coords.lat,
+          longitude: coords.lng,
+          logId: `log_${profile.uid}_${new Date().toISOString().slice(0, 10)}`,
+        });
+        finalFaceUrl = uploadResult.faceVerificationUrl;
+        setUploadingFace(false);
+      }
 
       await onCheckIn({
         latitude: coords.lat,
@@ -214,11 +270,18 @@ export const AttendanceTerminalView: React.FC<AttendanceTerminalViewProps> = ({
         locationLabel: resolvedLocationLabel,
         statusOverride:
           selectedMode === 'hadir' ? undefined : (selectedMode as AttendanceStatus),
-        notes,
+        notes: notes.trim(),
+        faceVerificationUrl: finalFaceUrl,
       });
+
       setFeedback({
         type: 'success',
-        text: `Absensi berhasil dikunci di ${nearestUnit.name} (Jarak ${nearestDistanceMeters}m — Valid di dalam radius ${officeConfig.radiusMeters}m).`,
+        text:
+          selectedMode === 'sakit'
+            ? `Absensi Sakit berhasil disimpan ke sistem dengan alasan: "${notes.trim()}". Semoga lekas pulih!`
+            : selectedMode === 'izin'
+            ? `Pengajuan Izin Resmi berhasil dicatat di Firestore dengan alasan: "${notes.trim()}".`
+            : `Absensi & Verifikasi Wajah berhasil dikunci di ${nearestUnit.name} (Jarak ${nearestDistanceMeters}m — Tersimpan di Firebase Storage).`,
       });
     } catch (err) {
       setFeedback({
@@ -227,6 +290,7 @@ export const AttendanceTerminalView: React.FC<AttendanceTerminalViewProps> = ({
       });
     } finally {
       setSubmitting(false);
+      setUploadingFace(false);
     }
   };
 
@@ -530,6 +594,8 @@ export const AttendanceTerminalView: React.FC<AttendanceTerminalViewProps> = ({
                   value={
                     isWithinAnyUnit
                       ? `${nearestUnit.name} (${nearestDistanceMeters}m)`
+                      : selectedMode === 'sakit' || selectedMode === 'izin'
+                      ? `Dispensasi Luar Unit (${selectedMode === 'sakit' ? 'Sakit' : 'Izin'})`
                       : `Di Luar Zona (${nearestDistanceMeters}m dari ${nearestUnit.code})`
                   }
                   className="w-full px-3 py-2 text-xs border border-slate-200 bg-slate-100 text-slate-700 rounded-lg font-medium"
@@ -537,17 +603,191 @@ export const AttendanceTerminalView: React.FC<AttendanceTerminalViewProps> = ({
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">
-                  Catatan Pekerjaan / Laporan Penyelesaian Shift
+                  {selectedMode === 'sakit' ? (
+                    <span className="text-rose-700 font-semibold flex items-center gap-1">
+                      <span>Alasan Diagnosa Sakit & No. Surat Dokter</span>
+                      <span className="text-rose-500">*wajib</span>
+                    </span>
+                  ) : selectedMode === 'izin' ? (
+                    <span className="text-amber-800 font-semibold flex items-center gap-1">
+                      <span>Alasan & Keperluan Izin Resmi</span>
+                      <span className="text-rose-500">*wajib</span>
+                    </span>
+                  ) : (
+                    <span>Catatan Pekerjaan / Laporan Shift</span>
+                  )}
                 </label>
                 <input
                   type="text"
                   maxLength={300}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Contoh: Pemeliharaan turbin / inspeksi panel unit"
-                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg"
+                  placeholder={
+                    selectedMode === 'sakit'
+                      ? 'Contoh: Demam berdarah dan istirahat dokter (Surat No: SKD-891/2026)...'
+                      : selectedMode === 'izin'
+                      ? 'Contoh: Urusan keluarga mendesak / penugasan koordinasi luar kota...'
+                      : 'Contoh: Pemeliharaan turbin / inspeksi panel unit...'
+                  }
+                  className={`w-full px-3 py-2 text-xs border rounded-lg transition-colors ${
+                    (selectedMode === 'sakit' || selectedMode === 'izin') && !notes.trim()
+                      ? 'border-amber-400 bg-amber-50/40 focus:border-amber-600 focus:ring-amber-500'
+                      : 'border-slate-300 focus:ring-slate-900'
+                  }`}
+                  required={selectedMode === 'sakit' || selectedMode === 'izin'}
                 />
+                {(selectedMode === 'sakit' || selectedMode === 'izin') && (
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Teks alasan ini akan disimpan langsung ke database Firestore dan terlampir pada log absensi.
+                  </p>
+                )}
               </div>
+            </div>
+
+            {/* Bagian Verifikasi Wajah Biometrik Menggunakan Kamera Perangkat */}
+            <div className="border border-slate-200 bg-slate-50/80 rounded-xl p-4 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center border border-emerald-200 shrink-0">
+                    <Camera className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                      <span>Verifikasi Wajah Biometrik (Kamera Perangkat)</span>
+                      <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded border border-emerald-300">
+                        Firebase Storage
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-500">
+                      Pengambilan snapshot wajah terenkripsi AES-256 untuk validasi kehadiran fisik anti-manipulasi
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {faceSnapshot ? (
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-300 shadow-2xs">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Foto Wajah Siap</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShowCameraView(true)}
+                        className="px-2.5 py-1 text-xs font-medium text-slate-700 hover:text-slate-900 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 shadow-2xs"
+                      >
+                        Foto Ulang
+                      </button>
+                    </div>
+                  ) : todayLog?.faceVerificationUrl ? (
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-300 shadow-2xs">
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Wajah Terverifikasi Hari Ini</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setInspectingModalLog(todayLog)}
+                        className="px-2.5 py-1 text-xs font-semibold text-emerald-800 bg-emerald-100/80 border border-emerald-200 rounded-lg hover:bg-emerald-200 transition-colors shadow-2xs"
+                      >
+                        Lihat Snapshot
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowCameraView(true)}
+                        className="px-2.5 py-1 text-xs font-medium text-slate-700 hover:text-slate-900 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 shadow-2xs"
+                      >
+                        Ambil Ulang
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setShowCameraView(!showCameraView)}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg shadow-xs transition-colors"
+                    >
+                      <Camera className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>{showCameraView ? 'Tutup Kamera' : 'Buka Kamera Wajah'}</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Live Camera Viewfinder or Preview */}
+              {showCameraView && (
+                <div className="pt-2 animate-in fade-in">
+                  <FaceCameraView
+                    userName={profile.name}
+                    locationLabel={nearestUnit.name}
+                    latitude={coords.lat}
+                    longitude={coords.lng}
+                    initialSnapshot={faceSnapshot}
+                    onSnapshotCaptured={(dataUrl) => {
+                      setFaceSnapshot(dataUrl);
+                      setShowCameraView(false);
+                      setFeedback({
+                        type: 'success',
+                        text: 'Snapshot wajah biometrik berhasil diambil dan siap diunggah ke Firebase Storage saat check-in!',
+                      });
+                    }}
+                    onCancel={() => setShowCameraView(false)}
+                  />
+                </div>
+              )}
+
+              {/* Thumbnail preview if snapshot captured */}
+              {faceSnapshot && !showCameraView && (
+                <div className="flex items-center gap-3 p-2.5 bg-white border border-slate-200 rounded-xl shadow-2xs">
+                  <img
+                    src={faceSnapshot}
+                    alt="Foto Verifikasi"
+                    className="w-14 h-14 rounded-lg object-cover border border-slate-300 shadow-2xs cursor-pointer hover:opacity-90 transition-opacity"
+                    onClick={() => {
+                      setInspectingModalLog({
+                        logId: `temp_preview_${Date.now()}`,
+                        userId: profile.uid,
+                        recordedByUid: profile.uid,
+                        userName: profile.name,
+                        department: profile.department,
+                        position: profile.position,
+                        dateStr: new Date().toISOString().slice(0, 10),
+                        monthStr: new Date().toISOString().slice(0, 7),
+                        checkInTime: new Date().toLocaleTimeString('id-ID', { hour12: false }),
+                        checkOutTime: '',
+                        latitude: coords.lat,
+                        longitude: coords.lng,
+                        accuracyMeters: coords.accuracy,
+                        distanceMeters: nearestDistanceMeters,
+                        isWithinGeofence: isWithinAnyUnit,
+                        locationLabel: nearestUnit.name,
+                        status: 'hadir_tepat_waktu',
+                        lateMinutes: 0,
+                        workDurationMinutes: 0,
+                        notes: notes || '-',
+                        faceVerificationUrl: faceSnapshot,
+                      });
+                    }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                      <span>Snapshot Wajah Siap Diunggah</span>
+                      <span className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-1 rounded">
+                        Terenkripsi
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-500 mt-0.5">
+                      Snapshot akan dikirim ke Cloud Storage Firebase & dikaitkan dengan log absensi ini.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFaceSnapshot(null)}
+                    className="text-xs text-rose-600 hover:text-rose-700 hover:underline p-1 font-medium"
+                  >
+                    Hapus
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Dua Tombol Utama: Absen Masuk & Absen Keluar */}
@@ -555,13 +795,23 @@ export const AttendanceTerminalView: React.FC<AttendanceTerminalViewProps> = ({
               <button
                 type="submit"
                 disabled={submitting || isBlockedByAntiFraud}
-                className="w-full inline-flex items-center justify-center gap-2 px-5 py-3 text-xs font-semibold text-white bg-emerald-700 rounded-lg hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className={`w-full inline-flex items-center justify-center gap-2 px-5 py-3 text-xs font-semibold text-white rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors ${
+                  selectedMode === 'sakit'
+                    ? 'bg-rose-700 hover:bg-rose-600'
+                    : selectedMode === 'izin'
+                    ? 'bg-amber-700 hover:bg-amber-600'
+                    : 'bg-emerald-700 hover:bg-emerald-600'
+                }`}
               >
                 <MapPin className="w-4 h-4" />
                 {submitting
                   ? 'Memproses Absen...'
                   : isBlockedByAntiFraud
                   ? 'Absen Masuk Dikunci (Luar Radius)'
+                  : selectedMode === 'sakit'
+                  ? 'Simpan Laporan Sakit & Alasan Dokter'
+                  : selectedMode === 'izin'
+                  ? 'Kirim Pengajuan Izin Resmi'
                   : todayLog
                   ? `Absen Masuk Ulang / Pindah Unit (${nearestUnit.code})`
                   : `Absen Masuk (Check-In) — ${nearestUnit.code}`}
@@ -569,7 +819,7 @@ export const AttendanceTerminalView: React.FC<AttendanceTerminalViewProps> = ({
 
               <button
                 type="button"
-                disabled={submitting || !todayLog}
+                disabled={submitting || !todayLog || selectedMode === 'sakit' || selectedMode === 'izin'}
                 onClick={handleCheckOutSubmit}
                 className="w-full inline-flex items-center justify-center gap-2 px-5 py-3 text-xs font-semibold text-white bg-slate-900 rounded-lg hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
@@ -669,6 +919,12 @@ export const AttendanceTerminalView: React.FC<AttendanceTerminalViewProps> = ({
         onRequestSwap={handleRequestSwap}
         onReviewSwap={handleReviewSwap}
         onCancelSwap={handleCancelSwap}
+      />
+
+      {/* Face Verification Detail Inspection Modal */}
+      <FaceVerificationDetailModal
+        log={inspectingModalLog}
+        onClose={() => setInspectingModalLog(null)}
       />
     </div>
   );

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { FileSpreadsheet, FileText, RefreshCw, CheckCircle2, Banknote, Printer } from 'lucide-react';
-import { MonthlyRecapItem, PayrollRecord, UserProfile } from '../types';
+import { MonthlyRecapItem, PayrollRecord, UserProfile, AttendanceLog } from '../types';
 import { formatCurrencyIDR, formatDurationHoursMinutes } from '../utils/geo';
 import {
   exportMonthlyRecapToPDF,
@@ -12,6 +12,7 @@ import {
   DanantaraIndonesiaLogo,
   PlnIndonesiaPowerLogo,
 } from './CorporateLogos';
+import { DepartmentMonthlyProductivityPanel } from './DepartmentMonthlyProductivityPanel';
 
 interface RecapAndPayrollViewProps {
   mode: 'recap' | 'payroll';
@@ -24,6 +25,7 @@ interface RecapAndPayrollViewProps {
   onUpdatePayrollStatus: (payroll: PayrollRecord, nextStatus: 'approved' | 'paid') => Promise<void>;
   onAddStaffModalOpen: () => void;
   users: UserProfile[];
+  logs?: AttendanceLog[];
 }
 
 export const RecapAndPayrollView: React.FC<RecapAndPayrollViewProps> = ({
@@ -36,6 +38,8 @@ export const RecapAndPayrollView: React.FC<RecapAndPayrollViewProps> = ({
   onSyncPayrollFromRecap,
   onUpdatePayrollStatus,
   onAddStaffModalOpen,
+  users,
+  logs = [],
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [syncing, setSyncing] = useState(false);
@@ -164,6 +168,15 @@ export const RecapAndPayrollView: React.FC<RecapAndPayrollViewProps> = ({
             <span className="text-xs text-slate-500 mt-1 block">Kepatuhan jam & geofence</span>
           </div>
         </div>
+
+        {/* Panel Visualisasi Data Recharts: Perbandingan Produktivitas Antar Departemen Bulanan */}
+        <DepartmentMonthlyProductivityPanel
+          selectedMonth={selectedMonth}
+          onChangeMonth={onChangeMonth}
+          recapItems={filteredRecaps}
+          logs={logs}
+          allUsers={users}
+        />
 
         {/* Filter Bar */}
         <div className="flex flex-wrap items-center justify-between gap-4">

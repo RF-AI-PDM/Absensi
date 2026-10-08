@@ -22,19 +22,28 @@ import {
   where,
 } from 'firebase/firestore';
 import {
+  AlertCircle,
+  AlertTriangle,
   Bell,
   Bot,
+  Building2,
+  Calendar,
+  CalendarDays,
   CheckCircle2,
+  Clock,
   FileSpreadsheet,
   FileText,
+  Filter,
   KeyRound,
   LogIn,
   LogOut,
   MapPin,
   Pencil,
   Plus,
+  Search,
   Send,
   ShieldCheck,
+  Sparkles,
   Trash2,
   Users,
   X,
@@ -70,8 +79,11 @@ import {
   evaluateMultiUnitGeofence,
   formatCoordinates,
   formatDurationHoursMinutes,
+  formatIndonesianDate,
   getCurrentMonthStr,
   getCurrentTimeHHMMSS,
+  getFirstDayOfMonthDateStr,
+  getNDaysAgoDateStr,
   getRegisteredPowerUnits,
   getTodayDateStr,
   IPS_POWER_UNITS,
@@ -79,14 +91,29 @@ import {
   saveRegisteredPowerUnits,
 } from './utils/geo';
 import { computeTotpCode, getRemainingTotpSeconds, verifyTotpCode } from './utils/totp';
-import { exportAttendanceToExcel, exportAttendanceToPDF } from './utils/exporter';
+import {
+  exportAttendanceToExcel,
+  exportAttendanceToPDF,
+  exportDailySummaryPDF,
+} from './utils/exporter';
+import {
+  cacheLocalFaceSnapshot,
+  generateSimulatedBiometricSnapshot,
+  resolveFaceVerificationImage,
+} from './utils/faceVerification';
 import { GeospatialRadarMap } from './components/GeospatialRadarMap';
 import { AttendanceTerminalView } from './components/AttendanceTerminalView';
 import { RecapAndPayrollView } from './components/RecapAndPayrollView';
 import { TwoFactorPanel } from './components/TwoFactorPanel';
 import { EnterpriseAgentView } from './components/EnterpriseAgentView';
 import { AttendanceTrendChart } from './components/AttendanceTrendChart';
+import { DepartmentDisciplineChart } from './components/DepartmentDisciplineChart';
+import { DepartmentMonthlyProductivityPanel } from './components/DepartmentMonthlyProductivityPanel';
 import { AddPowerPlantModal } from './components/AddPowerPlantModal';
+import { PWAInstallBanner } from './components/PWAInstallBanner';
+import { MobileBottomNavigation } from './components/MobileBottomNavigation';
+import { MobileOfflineBanner } from './components/MobileOfflineBanner';
+import { FaceVerificationDetailModal } from './components/FaceVerificationDetailModal';
 
 type NavTab = 'monitoring' | 'terminal' | 'recap' | 'payroll' | 'security' | 'agent';
 
@@ -98,6 +125,83 @@ const STATUS_LABELS: Record<AttendanceStatus, string> = {
   lembur: 'Lembur',
   selesai_shift: 'Selesai Shift',
 };
+
+function renderAttendanceStatusBadge(status: AttendanceStatus, lateMinutes?: number) {
+  switch (status) {
+    case 'hadir_tepat_waktu':
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-300 shadow-2xs whitespace-nowrap">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+          <span>Tepat Waktu</span>
+        </span>
+      );
+    case 'terlambat':
+      return (
+        <div className="flex flex-col gap-1 items-start">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-900 border border-amber-300 shadow-2xs whitespace-nowrap">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+            <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+            <span>Terlambat</span>
+          </span>
+          {lateMinutes !== undefined && lateMinutes > 0 && (
+            <span className="text-[10px] font-mono tabular-nums text-amber-800 bg-amber-100/70 px-2 py-0.5 rounded-md border border-amber-300/80 font-medium">
+              +{lateMinutes} mnt
+            </span>
+          )}
+        </div>
+      );
+    case 'lembur':
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-indigo-50 text-indigo-800 border border-indigo-200 shadow-2xs whitespace-nowrap">
+          <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+          <Sparkles className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+          <span>Lembur</span>
+        </span>
+      );
+    case 'selesai_shift':
+      return (
+        <div className="flex flex-col gap-1 items-start">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-sky-50 text-sky-800 border border-sky-200 shadow-2xs whitespace-nowrap">
+            <span className="w-1.5 h-1.5 rounded-full bg-sky-500" />
+            <LogOut className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+            <span>Selesai Shift</span>
+          </span>
+          {lateMinutes !== undefined && lateMinutes > 0 ? (
+            <span className="text-[10px] font-mono tabular-nums text-amber-800 bg-amber-100/70 px-2 py-0.5 rounded-md border border-amber-300/80 font-medium">
+              +{lateMinutes} mnt
+            </span>
+          ) : (
+            <span className="text-[10px] font-mono text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/80">
+              Disiplin 100%
+            </span>
+          )}
+        </div>
+      );
+    case 'izin':
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-300 shadow-2xs whitespace-nowrap">
+          <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+          <FileText className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+          <span>Izin Resmi</span>
+        </span>
+      );
+    case 'sakit':
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-rose-50 text-rose-800 border border-rose-200 shadow-2xs whitespace-nowrap">
+          <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+          <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+          <span>Sakit</span>
+        </span>
+      );
+    default:
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-slate-100 text-slate-700 border border-slate-200 whitespace-nowrap">
+          <span>{status}</span>
+        </span>
+      );
+  }
+}
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
@@ -115,8 +219,12 @@ export default function App() {
   // Navigation & Filters
   const [activeTab, setActiveTab] = useState<NavTab>('monitoring');
   const [selectedDate, setSelectedDate] = useState<string>(getTodayDateStr());
+  const [dateFilterMode, setDateFilterMode] = useState<'single' | 'range'>('single');
+  const [startDate, setStartDate] = useState<string>(() => getNDaysAgoDateStr(6));
+  const [endDate, setEndDate] = useState<string>(getTodayDateStr());
   const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentMonthStr());
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [departmentFilter, setDepartmentFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Firestore Collections State
@@ -148,6 +256,7 @@ export default function App() {
     return list[0]?.unitId || IPS_POWER_UNITS[0].unitId;
   });
   const [quickActionBusy, setQuickActionBusy] = useState(false);
+  const [inspectingFaceLog, setInspectingFaceLog] = useState<AttendanceLog | null>(null);
   const [editingLog, setEditingLog] = useState<AttendanceLog | null>(null);
   const [editLogForm, setEditLogForm] = useState<{
     status: AttendanceStatus;
@@ -401,22 +510,40 @@ export default function App() {
   // Derived Data for Selected Date & Month
   const todayStr = getTodayDateStr();
 
-  const logsForSelectedDate = useMemo(
-    () => attendanceLogs.filter((l) => l.dateStr === selectedDate),
-    [attendanceLogs, selectedDate]
-  );
+  const logsForSelectedDate = useMemo(() => {
+    if (dateFilterMode === 'single') {
+      return attendanceLogs.filter((l) => l.dateStr === selectedDate);
+    }
+    const start = startDate || '0000-00-00';
+    const end = endDate || '9999-99-99';
+    return attendanceLogs.filter((l) => l.dateStr >= start && l.dateStr <= end);
+  }, [attendanceLogs, dateFilterMode, selectedDate, startDate, endDate]);
+
+  const availableDepartments = useMemo(() => {
+    const deptSet = new Set<string>();
+    allUsers.forEach((u) => {
+      if (u.department) deptSet.add(u.department.trim());
+    });
+    attendanceLogs.forEach((l) => {
+      if (l.department) deptSet.add(l.department.trim());
+    });
+    return Array.from(deptSet).sort();
+  }, [allUsers, attendanceLogs]);
 
   const filteredDateLogs = useMemo(() => {
     return logsForSelectedDate.filter((l) => {
       const matchesStatus = statusFilter === 'all' || l.status === statusFilter;
+      const matchesDepartment =
+        departmentFilter === 'all' ||
+        l.department?.trim().toLowerCase() === departmentFilter.trim().toLowerCase();
       const matchesSearch =
         !searchQuery ||
         l.userName.toLowerCase().includes(searchQuery.toLowerCase()) ||
         l.department.toLowerCase().includes(searchQuery.toLowerCase()) ||
         l.locationLabel.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchesStatus && matchesSearch;
+      return matchesStatus && matchesDepartment && matchesSearch;
     });
-  }, [logsForSelectedDate, statusFilter, searchQuery]);
+  }, [logsForSelectedDate, statusFilter, departmentFilter, searchQuery]);
 
   const myTodayLog = useMemo(() => {
     if (!currentUser) return null;
@@ -517,6 +644,7 @@ export default function App() {
     locationLabel: string;
     statusOverride?: AttendanceStatus;
     notes: string;
+    faceVerificationUrl?: string;
   }) => {
     if (!currentUser || !userProfile) return;
     const nowTime = getCurrentTimeHHMMSS();
@@ -570,6 +698,15 @@ export default function App() {
       lateMinutes: lateMins,
       workDurationMinutes: 0,
       notes: sanitizeString(params.notes, VALIDATION_CONSTRAINTS.NOTES_MAX_LEN, '-'),
+      ...(params.faceVerificationUrl
+        ? {
+            faceVerificationUrl: sanitizeString(
+              params.faceVerificationUrl,
+              VALIDATION_CONSTRAINTS.FACE_URL_MAX_LEN,
+              ''
+            ),
+          }
+        : {}),
     };
 
     try {
@@ -588,6 +725,7 @@ export default function App() {
           lateMinutes: payload.lateMinutes,
           workDurationMinutes: 0,
           notes: payload.notes,
+          ...(payload.faceVerificationUrl ? { faceVerificationUrl: payload.faceVerificationUrl } : {}),
           updatedAt: serverTimestamp(),
         });
       } else {
@@ -598,7 +736,9 @@ export default function App() {
         });
       }
       showToast(
-        `Absen Masuk berhasil dicatat pada pukul ${nowTime} di ${payload.locationLabel} (${dist}m).`
+        `Absen Masuk berhasil dicatat pada pukul ${nowTime} di ${payload.locationLabel} (${dist}m)${
+          payload.faceVerificationUrl ? ' dengan verifikasi wajah terenkripsi' : ''
+        }.`
       );
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, `attendance_logs/${targetLogId}`);
@@ -1025,6 +1165,15 @@ export default function App() {
             targetUnit.longitude
           );
           const logId = sanitizeId(`log_${member.uid}_${selectedDate}`);
+          const seedFaceUrl = `https://firebasestorage.googleapis.com/v0/b/concrete-amplifier-njq9c.firebasestorage.app/o/face_verifications%2F${member.uid}%2F${logId}.jpg?alt=media&token=seed_verified_${Date.now().toString().slice(-4)}`;
+          const seedSnapshotData = generateSimulatedBiometricSnapshot(
+            member.name,
+            `${targetUnit.name} (${targetUnit.region})`,
+            lat,
+            lng
+          );
+          cacheLocalFaceSnapshot(logId, seedSnapshotData, seedFaceUrl);
+
           await setDoc(doc(db, 'attendance_logs', logId), {
             logId,
             userId: member.uid,
@@ -1046,6 +1195,7 @@ export default function App() {
             lateMinutes: member.lateMinutes,
             workDurationMinutes: 480,
             notes: member.notes,
+            faceVerificationUrl: seedFaceUrl,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
           });
@@ -1249,7 +1399,10 @@ export default function App() {
   if (!currentUser) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col justify-between">
-        <header className="flex items-center justify-between px-6 lg:px-12 py-4 border-b border-slate-200 bg-white">
+        <MobileOfflineBanner />
+        <PWAInstallBanner variant="banner" />
+
+        <header className="flex items-center justify-between px-4 sm:px-6 lg:px-12 py-4 border-b border-slate-200 bg-white">
           <a href="#top" className="text-xl font-bold tracking-tight text-slate-900 font-display">
             HADIROT
           </a>
@@ -1267,14 +1420,15 @@ export default function App() {
               Keamanan 2FA
             </a>
           </nav>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <PWAInstallBanner variant="button" />
             <button
               type="button"
               onClick={() => signInWithPopup(auth, googleProvider)}
               className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-slate-900 rounded-lg hover:bg-slate-800 transition-colors whitespace-nowrap"
             >
               <LogIn className="w-3.5 h-3.5" />
-              Masuk dengan Akun Google
+              <span>Masuk Google</span>
             </button>
           </div>
         </header>
@@ -1461,18 +1615,26 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
+      <MobileOfflineBanner />
+      <PWAInstallBanner variant="banner" />
+
       {/* Top Bar Contract: Zone 1 (Single wordmark) — Zone 2 (5 nav links) — Zone 3 (2 actions) */}
-      <header className="flex items-center justify-between px-6 lg:px-10 py-3.5 border-b border-slate-200 bg-white sticky top-0 z-30">
-        <a
-          href="#monitoring"
-          onClick={(e) => {
-            e.preventDefault();
-            setActiveTab('monitoring');
-          }}
-          className="text-lg font-bold tracking-tight text-slate-900 font-display whitespace-nowrap"
-        >
-          HADIROT
-        </a>
+      <header className="flex items-center justify-between px-4 sm:px-6 lg:px-10 py-3.5 border-b border-slate-200 bg-white sticky top-0 z-30 shadow-2xs">
+        <div className="flex items-center gap-3">
+          <a
+            href="#monitoring"
+            onClick={(e) => {
+              e.preventDefault();
+              setActiveTab('monitoring');
+            }}
+            className="flex items-center gap-2 text-lg font-bold tracking-tight text-slate-900 font-display whitespace-nowrap"
+          >
+            <div className="w-7 h-7 rounded-lg bg-slate-900 text-white flex items-center justify-center p-1 shadow-xs">
+              <img src="/icon.svg" alt="HADIROT" className="w-full h-full object-contain" />
+            </div>
+            <span>HADIROT</span>
+          </a>
+        </div>
 
         <nav className="hidden md:flex items-center gap-6 text-xs font-medium text-slate-600">
           {(
@@ -1500,11 +1662,12 @@ export default function App() {
           ))}
         </nav>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
+          <PWAInstallBanner variant="button" />
           <button
             type="button"
             onClick={() => setActiveTab('terminal')}
-            className="px-3.5 py-1.5 text-xs font-medium text-white bg-slate-900 rounded-lg hover:bg-slate-800 transition-colors whitespace-nowrap"
+            className="hidden sm:inline-flex px-3.5 py-1.5 text-xs font-medium text-white bg-slate-900 rounded-lg hover:bg-slate-800 transition-colors whitespace-nowrap"
           >
             {myTodayLog ? 'Status Check-In' : 'Absen Sekarang'}
           </button>
@@ -1514,35 +1677,10 @@ export default function App() {
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors whitespace-nowrap"
           >
             <LogOut className="w-3.5 h-3.5" />
-            Keluar
+            <span className="hidden sm:inline">Keluar</span>
           </button>
         </div>
       </header>
-
-      {/* Mobile Navigation Bar */}
-      <div className="flex md:hidden items-center gap-1 overflow-x-auto px-4 py-2 bg-white border-b border-slate-200">
-        {(
-          [
-            { id: 'monitoring', label: 'Monitoring' },
-            { id: 'terminal', label: 'Absensi GPS' },
-            { id: 'recap', label: 'Rekap Bulanan' },
-            { id: 'payroll', label: 'Penggajian' },
-            { id: 'agent', label: 'Agen & Bot' },
-            { id: 'security', label: '2FA & Geofence' },
-          ] as const
-        ).map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => setActiveTab(item.id)}
-            className={`px-3 py-1.5 text-xs font-medium rounded-md whitespace-nowrap ${
-              activeTab === item.id ? 'bg-slate-900 text-white' : 'text-slate-600'
-            }`}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
 
       {/* Toast Feedback */}
       {toastBanner && (
@@ -1551,71 +1689,241 @@ export default function App() {
         </div>
       )}
 
-      {/* Main Content Container (1440px max-w) */}
-      <main className="flex-1 w-full max-w-[1400px] mx-auto px-6 lg:px-10 py-8">
+      {/* Main Content Container (Mobile-first padding with safe-area spacing for Android Bottom Bar) */}
+      <main className="flex-1 w-full max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-10 py-6 sm:py-8 pb-28 md:pb-8">
         {activeTab === 'monitoring' && (
           <div className="space-y-6">
-            {/* Context Header & Actions */}
-            <div className="flex flex-wrap items-end justify-between gap-4 border-b border-slate-200 pb-5">
-              <div>
-                <div className="text-xs text-slate-500">
-                  Login sebagai: {userProfile?.name} · {userProfile?.department} ·{' '}
-                  {isAdmin ? 'Akses Administrator' : 'Akses Karyawan'} ·{' '}
-                  {userProfile?.twoFactorEnabled ? '2FA Aktif' : '2FA Standar'}
+            {/* Context Header & Actions with Date Range Picker */}
+            <div className="border-b border-slate-200 pb-5 space-y-4">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <div className="text-xs text-slate-500">
+                    Login sebagai: {userProfile?.name} · {userProfile?.department} ·{' '}
+                    {isAdmin ? 'Akses Administrator' : 'Akses Karyawan'} ·{' '}
+                    {userProfile?.twoFactorEnabled ? '2FA Aktif' : '2FA Standar'}
+                  </div>
+                  <h1 className="text-2xl font-bold text-slate-900 font-display mt-1">
+                    Dashboard Pemantauan Lokasi & Kehadiran Real-Time
+                  </h1>
                 </div>
-                <h1 className="text-2xl font-bold text-slate-900 font-display mt-1">
-                  Dashboard Pemantauan Lokasi & Kehadiran Real-Time
-                </h1>
-              </div>
 
-              <div className="flex flex-wrap items-center gap-2.5">
-                <input
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                  className="px-3 py-1.5 text-xs font-mono tabular-nums border border-slate-300 rounded-lg bg-white"
-                />
-
-                <button
-                  type="button"
-                  onClick={() => exportAttendanceToPDF(filteredDateLogs, selectedDate)}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium text-slate-800 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors whitespace-nowrap"
-                >
-                  <FileText className="w-3.5 h-3.5" />
-                  Ekspor PDF
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => exportAttendanceToExcel(filteredDateLogs, selectedDate)}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium text-slate-800 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors whitespace-nowrap"
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5" />
-                  Ekspor Excel
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('agent')}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-slate-900 rounded-lg hover:bg-slate-800 transition-colors whitespace-nowrap"
-                >
-                  <Bot className="w-3.5 h-3.5 text-emerald-400" />
-                  Agen Sistem & Bot Pengetahuan
-                </button>
-
-                {isAdmin && (
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
-                    disabled={seedingDemo}
-                    onClick={handleSeedTeamData}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-emerald-700 rounded-lg hover:bg-emerald-600 disabled:opacity-50 transition-colors whitespace-nowrap"
+                    onClick={() =>
+                      exportDailySummaryPDF(
+                        allUsers,
+                        filteredDateLogs,
+                        dateFilterMode === 'single'
+                          ? selectedDate
+                          : `${formatIndonesianDate(startDate)} - ${formatIndonesianDate(endDate)}`,
+                        officeConfig,
+                        powerUnits
+                      )
+                    }
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-slate-900 rounded-lg hover:bg-slate-800 transition-colors whitespace-nowrap shadow-xs"
+                    title="Unduh laporan ringkasan eksekutif kehadiran & kepatuhan geofence resmi format PDF"
                   >
-                    <Users className="w-3.5 h-3.5" />
-                    {seedingDemo
-                      ? 'Memuat Data 4 Unit...'
-                      : 'Simulasi Staf 4 Unit (Jeranjang, Ampenan, Pringgabaya, Taliwang)'}
+                    <FileText className="w-3.5 h-3.5 text-emerald-400" />
+                    Unduh Ringkasan {dateFilterMode === 'range' ? 'Periode' : 'Harian'}
                   </button>
-                )}
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      exportAttendanceToPDF(
+                        filteredDateLogs,
+                        dateFilterMode === 'single' ? selectedDate : `${startDate} s/d ${endDate}`
+                      )
+                    }
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium text-slate-800 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors whitespace-nowrap"
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    Ekspor PDF
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      exportAttendanceToExcel(
+                        filteredDateLogs,
+                        dateFilterMode === 'single' ? selectedDate : `${startDate}_sd_${endDate}`
+                      )
+                    }
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium text-slate-800 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors whitespace-nowrap"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                    Ekspor Excel
+                  </button>
+
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      disabled={seedingDemo}
+                      onClick={handleSeedTeamData}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-emerald-700 rounded-lg hover:bg-emerald-600 disabled:opacity-50 transition-colors whitespace-nowrap"
+                    >
+                      <Users className="w-3.5 h-3.5" />
+                      {seedingDemo ? 'Memuat 4 Unit...' : 'Simulasi Staf 4 Unit'}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Date Filter & Range Picker Bar */}
+              <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-white border border-slate-200 rounded-xl shadow-2xs">
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Mode Toggle: Harian vs Rentang Tanggal */}
+                  <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg border border-slate-200/80">
+                    <button
+                      type="button"
+                      onClick={() => setDateFilterMode('single')}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap ${
+                        dateFilterMode === 'single'
+                          ? 'bg-white text-slate-900 shadow-xs font-semibold'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      <Calendar className="w-3.5 h-3.5 text-slate-500" />
+                      <span>Harian</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDateFilterMode('range')}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap ${
+                        dateFilterMode === 'range'
+                          ? 'bg-white text-slate-900 shadow-xs font-semibold'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      <CalendarDays className="w-3.5 h-3.5 text-slate-500" />
+                      <span>Rentang Periode</span>
+                    </button>
+                  </div>
+
+                  {/* Single Date Selector */}
+                  {dateFilterMode === 'single' ? (
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="date"
+                        value={selectedDate}
+                        onChange={(e) => setSelectedDate(e.target.value)}
+                        className="px-3 py-1.5 text-xs font-mono tabular-nums border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-slate-900"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setSelectedDate(getTodayDateStr())}
+                        className={`px-2.5 py-1.5 text-xs rounded-lg border transition-colors ${
+                          selectedDate === getTodayDateStr()
+                            ? 'bg-slate-900 text-white border-slate-900 font-semibold'
+                            : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        Hari Ini
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedDate(getNDaysAgoDateStr(1))}
+                        className={`px-2.5 py-1.5 text-xs rounded-lg border transition-colors ${
+                          selectedDate === getNDaysAgoDateStr(1)
+                            ? 'bg-slate-900 text-white border-slate-900 font-semibold'
+                            : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        Kemarin
+                      </button>
+                    </div>
+                  ) : (
+                    /* Date Range Picker (Start & End Date) */
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200">
+                        <span className="text-[11px] font-medium text-slate-500">Mulai:</span>
+                        <input
+                          type="date"
+                          value={startDate}
+                          max={endDate || undefined}
+                          onChange={(e) => setStartDate(e.target.value)}
+                          className="px-2 py-0.5 text-xs font-mono tabular-nums border border-slate-300 rounded bg-white"
+                        />
+                        <span className="text-slate-400">s/d</span>
+                        <span className="text-[11px] font-medium text-slate-500">Selesai:</span>
+                        <input
+                          type="date"
+                          value={endDate}
+                          min={startDate || undefined}
+                          onChange={(e) => setEndDate(e.target.value)}
+                          className="px-2 py-0.5 text-xs font-mono tabular-nums border border-slate-300 rounded bg-white"
+                        />
+                      </div>
+
+                      {/* Quick Presets for Date Range */}
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStartDate(getNDaysAgoDateStr(6));
+                            setEndDate(getTodayDateStr());
+                          }}
+                          className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${
+                            startDate === getNDaysAgoDateStr(6) && endDate === getTodayDateStr()
+                              ? 'bg-slate-900 text-white border-slate-900 font-semibold'
+                              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          1 Minggu (7 Hari)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStartDate(getNDaysAgoDateStr(13));
+                            setEndDate(getTodayDateStr());
+                          }}
+                          className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${
+                            startDate === getNDaysAgoDateStr(13) && endDate === getTodayDateStr()
+                              ? 'bg-slate-900 text-white border-slate-900 font-semibold'
+                              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          2 Minggu (14 Hari)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStartDate(getFirstDayOfMonthDateStr(selectedMonth));
+                            setEndDate(getTodayDateStr());
+                          }}
+                          className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${
+                            startDate === getFirstDayOfMonthDateStr(selectedMonth) &&
+                            endDate === getTodayDateStr()
+                              ? 'bg-slate-900 text-white border-slate-900 font-semibold'
+                              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          Bulan Ini
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Range Active Summary Pill */}
+                <div className="text-xs text-slate-600 font-medium flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>
+                    {dateFilterMode === 'single' ? (
+                      <>
+                        Data Tanggal: <strong>{formatIndonesianDate(selectedDate)}</strong> (
+                        {filteredDateLogs.length} Log)
+                      </>
+                    ) : (
+                      <>
+                        Periode: <strong>{formatIndonesianDate(startDate)}</strong> s/d{' '}
+                        <strong>{formatIndonesianDate(endDate)}</strong> ({filteredDateLogs.length}{' '}
+                        Log Tersaring)
+                      </>
+                    )}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -1771,6 +2079,22 @@ export default function App() {
               onSelectDate={(newDate) => setSelectedDate(newDate)}
             />
 
+            {/* Komponen Grafik Batang: Distribusi Status Kehadiran (Tepat Waktu vs Terlambat) per Departemen & Identifikasi Unit Terendah */}
+            <DepartmentDisciplineChart
+              logs={attendanceLogs}
+              allUsers={allUsers}
+              selectedDate={selectedDate}
+            />
+
+            {/* Panel Visualisasi Data Recharts: Perbandingan Produktivitas Antar Departemen Bulanan Secara Mendalam */}
+            <DepartmentMonthlyProductivityPanel
+              selectedMonth={selectedMonth}
+              onChangeMonth={setSelectedMonth}
+              recapItems={monthlyRecapItems}
+              logs={attendanceLogs}
+              allUsers={allUsers}
+            />
+
             {/* Geospatial Radar & Real-Time Location Map */}
             <GeospatialRadarMap
               officeConfig={officeConfig}
@@ -1798,9 +2122,10 @@ export default function App() {
             />
 
             {/* Real-Time Attendance Log Table */}
-            <div className="border border-slate-200 bg-white rounded-xl overflow-hidden">
-              <div className="px-6 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4">
-                <div className="flex flex-wrap items-center gap-1 p-1 bg-slate-100 rounded-lg">
+            <div className="border border-slate-200 bg-white rounded-xl overflow-hidden shadow-xs">
+              <div className="px-6 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4 bg-slate-50/50">
+                {/* Status Tabs */}
+                <div className="flex flex-wrap items-center gap-1 p-1 bg-slate-200/80 rounded-lg">
                   {(
                     [
                       { id: 'all', label: 'Semua Status' },
@@ -1816,7 +2141,7 @@ export default function App() {
                       onClick={() => setStatusFilter(tab.id)}
                       className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap ${
                         statusFilter === tab.id
-                          ? 'bg-white text-slate-900 shadow-sm'
+                          ? 'bg-white text-slate-900 shadow-xs font-semibold'
                           : 'text-slate-600 hover:text-slate-900'
                       }`}
                     >
@@ -1825,13 +2150,61 @@ export default function App() {
                   ))}
                 </div>
 
-                <input
-                  type="search"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Cari nama staf, departemen, atau lokasi..."
-                  className="w-full sm:w-72 px-3.5 py-1.5 text-xs border border-slate-300 rounded-lg"
-                />
+                {/* Filters & Search Toolbar: Department Dropdown + Search Box */}
+                <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+                  {/* Department Dropdown Filter */}
+                  <div className="relative flex items-center min-w-[200px]">
+                    <Building2 className="w-3.5 h-3.5 text-slate-500 absolute left-3 pointer-events-none" />
+                    <select
+                      aria-label="Filter berdasarkan Departemen"
+                      value={departmentFilter}
+                      onChange={(e) => setDepartmentFilter(e.target.value)}
+                      className="w-full pl-8 pr-8 py-1.5 text-xs font-medium border border-slate-300 rounded-lg bg-white text-slate-800 hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 appearance-none cursor-pointer shadow-2xs"
+                    >
+                      <option value="all">Semua Departemen ({availableDepartments.length})</option>
+                      {availableDepartments.map((dept) => {
+                        const count = logsForSelectedDate.filter(
+                          (l) => l.department?.trim().toLowerCase() === dept.toLowerCase()
+                        ).length;
+                        return (
+                          <option key={dept} value={dept}>
+                            {dept} {count > 0 ? `(${count} hadir)` : ''}
+                          </option>
+                        );
+                      })}
+                    </select>
+                    <Filter className="w-3 h-3 text-slate-400 absolute right-2.5 pointer-events-none" />
+                  </div>
+
+                  {/* Search Input */}
+                  <div className="relative flex-1 sm:w-64">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                      type="search"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Cari nama staf, lokasi, NIK..."
+                      className="w-full pl-8 pr-3.5 py-1.5 text-xs border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-slate-900 shadow-2xs"
+                    />
+                  </div>
+
+                  {/* Active Filter Clear Badge */}
+                  {(departmentFilter !== 'all' || statusFilter !== 'all' || searchQuery) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDepartmentFilter('all');
+                        setStatusFilter('all');
+                        setSearchQuery('');
+                      }}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium text-slate-600 bg-slate-200/70 hover:bg-slate-300/80 rounded-lg transition-colors whitespace-nowrap"
+                      title="Reset semua filter ke default"
+                    >
+                      <X className="w-3 h-3" />
+                      <span>Reset Filter</span>
+                    </button>
+                  )}
+                </div>
               </div>
 
               {filteredDateLogs.length === 0 ? (
@@ -1860,12 +2233,15 @@ export default function App() {
                     <thead>
                       <tr className="border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600">
                         <th className="py-3 px-4 first:rounded-l-lg">Karyawan & Departemen</th>
-                        <th className="py-3 px-4">Waktu Hadir (Masuk / Pulang)</th>
+                        <th className="py-3 px-4">
+                          {dateFilterMode === 'range' ? 'Tanggal & Waktu Hadir' : 'Waktu Hadir (Masuk / Pulang)'}
+                        </th>
+                        <th className="py-3 px-4">Verifikasi Wajah</th>
                         <th className="py-3 px-4">Koordinat GPS & Zona</th>
                         <th className="py-3 px-4 text-right">Jarak Kantor</th>
                         <th className="py-3 px-4">Status Kehadiran</th>
                         <th className="py-3 px-4 text-right">Durasi Kerja</th>
-                        <th className="py-3 px-4">Catatan Tugas</th>
+                        <th className="py-3 px-4">Catatan / Alasan Izin & Sakit</th>
                         <th className="py-3 px-4 text-center last:rounded-r-lg">Aksi</th>
                       </tr>
                     </thead>
@@ -1882,12 +2258,39 @@ export default function App() {
                             </div>
                           </td>
                           <td className="py-3 px-4 font-mono tabular-nums border-y border-transparent group-hover:border-slate-200/80">
+                            {dateFilterMode === 'range' && (
+                              <div className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-800 bg-slate-100 border border-slate-200/80 px-2 py-0.5 rounded-md mb-1.5 shadow-2xs">
+                                <Calendar className="w-3 h-3 text-slate-600" />
+                                <span>{formatIndonesianDate(log.dateStr)}</span>
+                              </div>
+                            )}
                             <div className="text-slate-900 font-medium">
                               Masuk: {log.checkInTime}
                             </div>
                             <div className="text-slate-500">
                               Pulang: {log.checkOutTime || 'Aktif Bertugas'}
                             </div>
+                          </td>
+                          <td className="py-3 px-4 border-y border-transparent group-hover:border-slate-200/80 whitespace-nowrap">
+                            {log.faceVerificationUrl ? (
+                              <button
+                                type="button"
+                                onClick={() => setInspectingFaceLog(log)}
+                                className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-emerald-100 hover:border-emerald-400 transition-colors shadow-2xs group/face"
+                                title="Lihat bukti snapshot wajah biometrik terenkripsi di Firebase Storage"
+                              >
+                                <div className="w-5 h-5 rounded-md overflow-hidden bg-slate-200 border border-emerald-400 shrink-0">
+                                  <img
+                                    src={resolveFaceVerificationImage(log.faceVerificationUrl, log.logId)}
+                                    alt="Foto Wajah"
+                                    className="w-full h-full object-cover"
+                                  />
+                                </div>
+                                <span className="font-semibold text-[11px]">Valid Biometrik</span>
+                              </button>
+                            ) : (
+                              <span className="text-[11px] text-slate-400 font-mono">-</span>
+                            )}
                           </td>
                           <td className="py-3 px-4 border-y border-transparent group-hover:border-slate-200/80">
                             <div className="font-mono tabular-nums text-slate-800">
@@ -1899,40 +2302,53 @@ export default function App() {
                             </div>
                           </td>
                           <td className="py-3 px-4 text-right font-mono tabular-nums border-y border-transparent group-hover:border-slate-200/80">
-                            <span
-                              className={`font-semibold ${
-                                log.isWithinGeofence ? 'text-emerald-700' : 'text-red-700'
-                              }`}
-                            >
-                              {log.distanceMeters} m
-                            </span>
-                            <div className="text-slate-500">
-                              {log.isWithinGeofence ? 'Dalam Geofence' : 'Luar Geofence'}
+                            <div className="flex flex-col items-end gap-0.5">
+                              <span
+                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold ${
+                                  log.isWithinGeofence
+                                    ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                                    : 'bg-red-50 text-red-800 border border-red-200'
+                                }`}
+                              >
+                                <span
+                                  className={`w-1.5 h-1.5 rounded-full ${
+                                    log.isWithinGeofence ? 'bg-emerald-500' : 'bg-red-500'
+                                  }`}
+                                />
+                                {log.distanceMeters} m
+                              </span>
+                              <span className="text-[10px] text-slate-500">
+                                {log.isWithinGeofence ? 'Dalam Geofence' : 'Luar Geofence'}
+                              </span>
                             </div>
                           </td>
-                          <td className="py-3 px-4 border-y border-transparent group-hover:border-slate-200/80">
-                            <span
-                              className={`font-semibold ${
-                                log.status === 'terlambat'
-                                  ? 'text-amber-700'
-                                  : log.status === 'izin' || log.status === 'sakit'
-                                  ? 'text-slate-600'
-                                  : 'text-emerald-700'
-                              }`}
-                            >
-                              {STATUS_LABELS[log.status] || log.status}
-                            </span>
-                            {log.lateMinutes > 0 && (
-                              <div className="text-amber-700 font-mono tabular-nums">
-                                Telat {log.lateMinutes} menit
-                              </div>
-                            )}
+                          <td className="py-3 px-4 border-y border-transparent group-hover:border-slate-200/80 whitespace-nowrap">
+                            {renderAttendanceStatusBadge(log.status, log.lateMinutes)}
                           </td>
                           <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-700 border-y border-transparent group-hover:border-slate-200/80">
                             {formatDurationHoursMinutes(log.workDurationMinutes)}
                           </td>
-                          <td className="py-3 px-4 text-slate-600 max-w-[220px] truncate border-y border-transparent group-hover:border-slate-200/80">
-                            {log.notes || '-'}
+                          <td className="py-3 px-4 text-slate-700 max-w-[240px] border-y border-transparent group-hover:border-slate-200/80">
+                            {log.notes ? (
+                              <div className="space-y-1">
+                                <div className="text-slate-900 font-medium line-clamp-2" title={log.notes}>
+                                  {log.notes}
+                                </div>
+                                {(log.status === 'izin' || log.status === 'sakit') && (
+                                  <span
+                                    className={`inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[10px] font-semibold border ${
+                                      log.status === 'sakit'
+                                        ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                        : 'bg-amber-50 text-amber-700 border-amber-200'
+                                    }`}
+                                  >
+                                    Alasan Terlampir
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 font-mono">-</span>
+                            )}
                           </td>
                           <td className="py-3 px-4 text-center last:rounded-r-lg border-y border-transparent group-hover:border-slate-200/80 whitespace-nowrap">
                             {isAdmin ? (
@@ -1993,6 +2409,7 @@ export default function App() {
             onUpdatePayrollStatus={handleUpdatePayrollStatus}
             onAddStaffModalOpen={() => setShowAddStaffModal(true)}
             users={allUsers}
+            logs={attendanceLogs}
           />
         )}
 
@@ -2623,6 +3040,20 @@ export default function App() {
         onClose={() => setShowAddPowerPlantModal(false)}
         onAddUnit={handleAddPowerUnit}
         existingUnits={powerUnits}
+      />
+
+      {/* Modal Detail Verifikasi Wajah Biometrik (Storage Preview) */}
+      <FaceVerificationDetailModal
+        log={inspectingFaceLog}
+        onClose={() => setInspectingFaceLog(null)}
+      />
+
+      {/* Android Material 3 Mobile Bottom Navigation Bar */}
+      <MobileBottomNavigation
+        activeTab={activeTab}
+        onSelectTab={(tab) => setActiveTab(tab)}
+        isCheckedInToday={!!myTodayLog}
+        unreadCount={myUnreadReminders.length}
       />
     </div>
   );
